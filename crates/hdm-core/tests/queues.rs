@@ -310,7 +310,7 @@ fn a_closed_schedule_holds_downloads_back() {
     manager.put_queue(queue).unwrap();
 
     let id = manager.add(
-        DownloadSpec::new(&server.url("/f.bin"), dir.path().to_path_buf()),
+        DownloadSpec::new(server.url("/f.bin"), dir.path().to_path_buf()),
         None,
         true,
     );
@@ -346,7 +346,7 @@ fn an_open_schedule_lets_downloads_run() {
     manager.put_queue(queue).unwrap();
 
     let id = manager.add(
-        DownloadSpec::new(&server.url("/f.bin"), dir.path().to_path_buf()),
+        DownloadSpec::new(server.url("/f.bin"), dir.path().to_path_buf()),
         None,
         true,
     );
@@ -380,7 +380,7 @@ fn pausing_a_queue_stops_its_downloads() {
         .start();
 
     let id = manager.add(
-        DownloadSpec::new(&server.url("/big.bin"), dir.path().to_path_buf()),
+        DownloadSpec::new(server.url("/big.bin"), dir.path().to_path_buf()),
         None,
         true,
     );
@@ -439,7 +439,7 @@ fn queue_concurrency_is_enforced() {
     let mut ids = Vec::new();
     for _ in 0..3 {
         let id = manager.add(
-            DownloadSpec::new(&server.url("/a.bin"), dir.path().to_path_buf()),
+            DownloadSpec::new(server.url("/a.bin"), dir.path().to_path_buf()),
             None,
             true,
         );
