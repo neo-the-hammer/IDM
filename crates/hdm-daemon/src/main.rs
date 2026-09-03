@@ -95,7 +95,11 @@ fn run(options: Options) -> Result<(), String> {
     println!("Press Ctrl+C to stop.");
 
     let _ = options.foreground;
-    while !SHUTDOWN.load(Ordering::Acquire) {
+    let clipboard = manager.spawn_clipboard_monitor();
+
+    // Stop on a signal, or when a queue's completion action asked the daemon
+    // to exit once its downloads finished.
+    while !SHUTDOWN.load(Ordering::Acquire) && manager.is_running() {
         std::thread::sleep(Duration::from_millis(200));
     }
 
@@ -103,6 +107,7 @@ fn run(options: Options) -> Result<(), String> {
     bound.stop();
     manager.shutdown();
     let _ = scheduler.join();
+    let _ = clipboard.join();
     let _ = std::fs::remove_file(options.data_dir.join("daemon.json"));
     println!("Stopped.");
     Ok(())

@@ -8,12 +8,13 @@
 use crate::category::Categories;
 use crate::engine::{self, DownloadSpec, Outcome, Shared, Status};
 use crate::platform;
+use crate::queue::{Completion, Queue, MAIN_QUEUE};
 use crate::resume::sidecar_path_for;
 use crate::store::{now_secs, DownloadRecord, Settings, Store};
 use crate::throttle::Throttle;
 use crate::writer::part_path_for;
 use hdm_json::{json, Json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -32,6 +33,9 @@ struct Active {
 struct State {
     store: Store,
     active: HashMap<String, Active>,
+    /// Queues that had work in flight last tick, so a queue draining can be
+    /// noticed exactly once rather than every tick afterwards.
+    busy_queues: HashSet<String>,
 }
 
 pub struct Manager {
@@ -53,6 +57,7 @@ impl Manager {
             state: Mutex::new(State {
                 store,
                 active: HashMap::new(),
+                busy_queues: HashSet::new(),
             }),
             global_throttle,
             state_path,
@@ -266,6 +271,149 @@ impl Manager {
         Ok(())
     }
 
+    // ------------------------------------------------------------- queues
+
+    pub fn queues(&self) -> Vec<Queue> {
+        self.state.lock().unwrap().store.settings.queues.clone()
+    }
+
+    /// Creates or replaces a queue.
+    pub fn put_queue(&self, queue: Queue) -> Result<(), String> {
+        if queue.id.trim().is_empty() {
+            return Err("a queue needs an id".into());
+        }
+        let mut state = self.state.lock().unwrap();
+        match state
+            .store
+            .settings
+            .queues
+            .iter_mut()
+            .find(|q| q.id == queue.id)
+        {
+            Some(existing) => *existing = queue,
+            None => state.store.settings.queues.push(queue),
+        }
+        let _ = state.store.save();
+        Ok(())
+    }
+
+    /// Removes a queue, moving anything in it back to the main queue so no
+    /// download is left pointing at something that no longer exists.
+    pub fn remove_queue(&self, id: &str) -> Result<(), String> {
+        if id == MAIN_QUEUE {
+            return Err("the main queue cannot be removed".into());
+        }
+        let mut state = self.state.lock().unwrap();
+        if !state.store.settings.queues.iter().any(|q| q.id == id) {
+            return Err(format!("no queue {id}"));
+        }
+        state.store.settings.queues.retain(|q| q.id != id);
+        for record in state.store.downloads.iter_mut() {
+            if record.queue.as_deref() == Some(id) {
+                record.queue = Some(MAIN_QUEUE.to_string());
+            }
+        }
+        let _ = state.store.save();
+        Ok(())
+    }
+
+    /// Moves a download into a queue.
+    pub fn set_queue(&self, download: &str, queue: Option<&str>) -> Result<(), String> {
+        let mut state = self.state.lock().unwrap();
+        if let Some(queue) = queue {
+            if !state.store.settings.queues.iter().any(|q| q.id == queue) {
+                return Err(format!("no queue {queue}"));
+            }
+        }
+        let record = state
+            .store
+            .get_mut(download)
+            .ok_or_else(|| format!("no download {download}"))?;
+        record.queue = queue.map(str::to_string);
+        let _ = state.store.save();
+        Ok(())
+    }
+
+    /// Starts or stops a queue by hand, independently of its schedule.
+    pub fn set_queue_paused(&self, id: &str, paused: bool) -> Result<(), String> {
+        let mut state = self.state.lock().unwrap();
+        let queue = state
+            .store
+            .settings
+            .queues
+            .iter_mut()
+            .find(|q| q.id == id)
+            .ok_or_else(|| format!("no queue {id}"))?;
+        queue.paused = paused;
+
+        if paused {
+            // Stop what this queue currently has in flight, or "pause queue"
+            // would only affect downloads that had not started yet.
+            let ids: Vec<String> = state
+                .store
+                .downloads
+                .iter()
+                .filter(|d| d.queue.as_deref().unwrap_or(MAIN_QUEUE) == id)
+                .map(|d| d.id.clone())
+                .collect();
+            for download in ids {
+                if let Some(active) = state.active.get(&download) {
+                    active.shared.pause();
+                }
+            }
+        }
+        let _ = state.store.save();
+        Ok(())
+    }
+
+    /// Watches the clipboard and offers any download link it finds.
+    ///
+    /// Links are added paused rather than started: silently downloading
+    /// something because it passed through the clipboard would be a surprise,
+    /// and a paused entry is easy to dismiss.
+    pub fn spawn_clipboard_monitor(self: &Arc<Manager>) -> JoinHandle<()> {
+        let manager = self.clone();
+        std::thread::spawn(move || {
+            let mut last = String::new();
+            while manager.running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(900));
+                if !manager.settings().clipboard_monitor {
+                    continue;
+                }
+                let Some(text) = platform::read_clipboard() else {
+                    continue;
+                };
+                let text = text.trim().to_string();
+                if text == last || text.is_empty() || text.len() > 4096 {
+                    continue;
+                }
+                last = text.clone();
+                if !looks_like_download_link(&text) {
+                    continue;
+                }
+                // Skip anything already in the list, or every copy would add a
+                // duplicate.
+                let known = {
+                    let state = manager.state.lock().unwrap();
+                    state.store.downloads.iter().any(|d| d.spec.url == text)
+                };
+                if known {
+                    continue;
+                }
+                let root = manager.settings().categories.root.clone();
+                let mut spec = crate::engine::DownloadSpec::new(&text, PathBuf::new());
+                spec.directory = PathBuf::new();
+                let _ = root;
+                let id = manager.add(spec, None, false);
+                let mut state = manager.state.lock().unwrap();
+                if let Some(record) = state.store.get_mut(&id) {
+                    record.added_by = Some("clipboard".into());
+                }
+                let _ = state.store.save();
+            }
+        })
+    }
+
     pub fn settings(&self) -> Settings {
         self.state.lock().unwrap().store.settings.clone()
     }
@@ -334,6 +482,13 @@ impl Manager {
         let mut state = self.state.lock().unwrap();
         self.reap(&mut state);
         self.launch_queued(&mut state);
+        self.check_drained_queues(&mut state);
+    }
+
+    /// Whether the daemon has been asked to stop, e.g. by a queue whose
+    /// completion action is "exit".
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::Acquire)
     }
 
     /// Folds finished transfers back into the stored records.
@@ -347,6 +502,7 @@ impl Manager {
         if finished.is_empty() {
             return;
         }
+        let notify = state.store.settings.notifications;
 
         for id in finished {
             let Some(active) = state.active.remove(&id) else {
@@ -370,6 +526,14 @@ impl Manager {
             if let Some(path) = shared.output_path() {
                 record.output_path = Some(path);
                 record.completed_at = Some(now_secs());
+                if notify {
+                    let name = record.filename.clone();
+                    // Spawned so a slow or missing notification daemon cannot
+                    // hold the manager's lock.
+                    std::thread::spawn(move || {
+                        platform::notify("Download finished", &name);
+                    });
+                }
             }
             // A download routed by its URL may belong elsewhere once the real
             // filename is known, so re-check now that we have it.
@@ -378,23 +542,64 @@ impl Manager {
         let _ = state.store.save();
     }
 
-    /// Starts queued downloads up to the concurrency limit.
+    /// Starts queued downloads, honouring each queue's schedule and limits.
     fn launch_queued(&self, state: &mut State) {
-        let limit = state.store.settings.max_concurrent as usize;
-        if state.active.len() >= limit {
+        let global_limit = state.store.settings.max_concurrent as usize;
+        if state.active.len() >= global_limit {
             return;
         }
+        let now = platform::local_time();
 
-        let ready: Vec<String> = state
-            .store
-            .downloads
-            .iter()
-            .filter(|d| d.status == Status::Queued && !state.active.contains_key(&d.id))
-            .take(limit - state.active.len())
-            .map(|d| d.id.clone())
-            .collect();
+        // How many of each queue's downloads are already running.
+        let mut running_per_queue: HashMap<String, usize> = HashMap::new();
+        for id in state.active.keys() {
+            let queue = state
+                .store
+                .get(id)
+                .and_then(|d| d.queue.clone())
+                .unwrap_or_else(|| MAIN_QUEUE.to_string());
+            *running_per_queue.entry(queue).or_insert(0) += 1;
+        }
+
+        let mut ready: Vec<String> = Vec::new();
+        for record in &state.store.downloads {
+            if state.active.len() + ready.len() >= global_limit {
+                break;
+            }
+            if record.status != Status::Queued || state.active.contains_key(&record.id) {
+                continue;
+            }
+            let queue = state.store.settings.queue_for(record.queue.as_deref());
+            // A paused queue, or one outside its scheduled window, starts
+            // nothing -- that is the whole point of scheduling it.
+            if !queue.is_runnable(now) {
+                continue;
+            }
+            let running = running_per_queue.get(&queue.id).copied().unwrap_or(0);
+            if running
+                + ready
+                    .iter()
+                    .filter(|id| in_queue(&state.store, id, &queue.id))
+                    .count()
+                >= queue.concurrency as usize
+            {
+                continue;
+            }
+            ready.push(record.id.clone());
+        }
 
         for id in ready {
+            let queue_limit = {
+                let record = match state.store.get(&id) {
+                    Some(record) => record,
+                    None => continue,
+                };
+                state
+                    .store
+                    .settings
+                    .queue_for(record.queue.as_deref())
+                    .speed_limit
+            };
             let Some(record) = state.store.get_mut(&id) else {
                 continue;
             };
@@ -403,11 +608,14 @@ impl Manager {
             record.error = None;
 
             let shared = Arc::new(Shared::new());
-            // Each download's own limit nests inside the global one.
-            let throttle = Arc::new(Throttle::with_parent(
-                spec.speed_limit,
+            // Three limits can apply at once: the download's own, its queue's,
+            // and the global one. Nesting the buckets makes a read satisfy all
+            // three without any of them needing to know about the others.
+            let queue_throttle = Arc::new(Throttle::with_parent(
+                queue_limit,
                 self.global_throttle.clone(),
             ));
+            let throttle = Arc::new(Throttle::with_parent(spec.speed_limit, queue_throttle));
 
             let handle = {
                 let shared = shared.clone();
@@ -429,6 +637,74 @@ impl Manager {
             );
         }
         let _ = state.store.save();
+    }
+
+    /// Fires a queue's completion action once its last download finishes.
+    fn check_drained_queues(&self, state: &mut State) {
+        let mut busy: HashSet<String> = HashSet::new();
+        for record in &state.store.downloads {
+            if matches!(
+                record.status,
+                Status::Queued | Status::Downloading | Status::Probing
+            ) {
+                busy.insert(
+                    record
+                        .queue
+                        .clone()
+                        .unwrap_or_else(|| MAIN_QUEUE.to_string()),
+                );
+            }
+        }
+
+        let drained: Vec<String> = state.busy_queues.difference(&busy).cloned().collect();
+        state.busy_queues = busy;
+
+        for id in drained {
+            // Only act when something actually completed. A queue that emptied
+            // because everything in it failed should not shut the machine down.
+            let completed_any = state.store.downloads.iter().any(|d| {
+                d.queue.as_deref().unwrap_or(MAIN_QUEUE) == id && d.status == Status::Completed
+            });
+            if !completed_any {
+                continue;
+            }
+            let Some(queue) = state
+                .store
+                .settings
+                .queues
+                .iter()
+                .find(|q| q.id == id)
+                .cloned()
+            else {
+                continue;
+            };
+            self.run_completion(&queue, state);
+        }
+    }
+
+    fn run_completion(&self, queue: &Queue, state: &State) {
+        match &queue.completion {
+            Completion::Nothing => {}
+            Completion::Exit => {
+                self.running.store(false, Ordering::Release);
+            }
+            Completion::Run(command) if !command.trim().is_empty() => {
+                let folder = state
+                    .store
+                    .settings
+                    .categories
+                    .root
+                    .to_string_lossy()
+                    .into_owned();
+                let _ = platform::run_program(command, Some(&folder));
+            }
+            Completion::Run(_) => {}
+            other => {
+                if let Some(action) = other.power_action() {
+                    let _: Result<(), _> = platform::power_action(&action);
+                }
+            }
+        }
     }
 
     /// Pauses everything and persists, for a clean shutdown.
@@ -508,4 +784,40 @@ pub fn download_now(spec: &DownloadSpec) -> std::io::Result<Outcome> {
     let shared = Arc::new(Shared::new());
     let throttle = Arc::new(Throttle::new(spec.speed_limit));
     engine::run(spec, &shared, &throttle)
+}
+
+/// Whether a download belongs to a given queue.
+fn in_queue(store: &Store, id: &str, queue: &str) -> bool {
+    store
+        .get(id)
+        .map(|d| d.queue.as_deref().unwrap_or(MAIN_QUEUE) == queue)
+        .unwrap_or(false)
+}
+
+/// Whether a clipboard string looks like a link to a file worth downloading.
+///
+/// Deliberately conservative: a page URL copied while browsing must not turn
+/// into a download, so the path has to end in something file-shaped.
+fn looks_like_download_link(text: &str) -> bool {
+    if text.contains(char::is_whitespace) {
+        return false;
+    }
+    let Ok(url) = hdm_net::url::Url::parse(text) else {
+        return false;
+    };
+    if !matches!(url.scheme.as_str(), "http" | "https" | "ftp" | "ftps") {
+        return false;
+    }
+    let Some(name) = url.filename() else {
+        return false;
+    };
+    let Some(extension) = crate::category::extension_of(&name) else {
+        return false;
+    };
+    // Web page extensions are exactly what a user copies without wanting a
+    // download.
+    !matches!(
+        extension.as_str(),
+        "html" | "htm" | "php" | "asp" | "aspx" | "jsp" | "xhtml" | "shtml"
+    )
 }

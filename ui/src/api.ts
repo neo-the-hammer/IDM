@@ -7,7 +7,7 @@
  * during development.
  */
 
-import type { Download, Settings, Snapshot, Totals } from './types.js';
+import type { Download, Queue, Settings, Snapshot, Totals } from './types.js';
 
 export class ApiError extends Error {
   constructor(
@@ -82,6 +82,22 @@ export class Api {
 
   clearCompleted(): Promise<{ removed: number }> {
     return this.call('POST', '/downloads-clear-completed');
+  }
+
+  queues(): Promise<{ queues: Queue[] }> {
+    return this.call('GET', '/queues');
+  }
+
+  saveQueue(queue: Queue): Promise<{ queues: Queue[] }> {
+    return this.call('PUT', `/queues/${encodeURIComponent(queue.id)}`, queue);
+  }
+
+  queueAction(id: string, action: 'pause' | 'resume'): Promise<{ queues: Queue[] }> {
+    return this.call('POST', `/queues/${encodeURIComponent(id)}/${action}`);
+  }
+
+  setDownloadQueue(id: string, queue: string | null): Promise<Download> {
+    return this.call('POST', `/downloads/${encodeURIComponent(id)}/queue`, { queue });
   }
 
   settings(): Promise<Settings> {

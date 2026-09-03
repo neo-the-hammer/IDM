@@ -7,6 +7,7 @@ use crate::server::HttpRequest;
 use hdm_core::engine::{DownloadSpec, MAX_CONNECTIONS};
 use hdm_core::manager::Manager;
 use hdm_core::platform;
+use hdm_core::queue::Queue;
 use hdm_core::store::Settings;
 use hdm_json::{json, Json};
 use std::path::PathBuf;
@@ -69,6 +70,7 @@ pub fn dispatch(manager: &Arc<Manager>, request: &HttpRequest, version: &str) ->
                 "restart" => manager.restart(id),
                 "reveal" => manager.reveal(id),
                 "limit" => set_limit(manager, id, request),
+                "queue" => set_queue(manager, id, request),
                 other => return error(404, format!("unknown action `{other}`")),
             };
             match result {
@@ -106,6 +108,50 @@ pub fn dispatch(manager: &Arc<Manager>, request: &HttpRequest, version: &str) ->
         },
 
         ("GET", ["categories"]) => ok(manager.categories().to_json()),
+
+        // ------------------------------------------------------------ queues
+        ("GET", ["queues"]) => ok(json!({
+            "queues": (Json::Arr(manager.queues().iter().map(Queue::to_json).collect()))
+        })),
+
+        ("PUT", ["queues", id]) => match request.json() {
+            Ok(mut body) => {
+                // The id in the path is authoritative, so a mismatched body
+                // cannot rename or overwrite a different queue.
+                body.insert("id", Json::Str((*id).to_string()));
+                match Queue::from_json(&body) {
+                    Some(queue) => match manager.put_queue(queue) {
+                        Ok(()) => ok(json!({
+                            "queues": (Json::Arr(
+                                manager.queues().iter().map(Queue::to_json).collect()
+                            ))
+                        })),
+                        Err(e) => error(400, e),
+                    },
+                    None => error(400, "malformed queue"),
+                }
+            }
+            Err(e) => error(400, e),
+        },
+
+        ("DELETE", ["queues", id]) => match manager.remove_queue(id) {
+            Ok(()) => ok(json!({"removed": (*id)})),
+            Err(e) => error(400, e),
+        },
+
+        ("POST", ["queues", id, action]) => {
+            let result = match *action {
+                "pause" => manager.set_queue_paused(id, true),
+                "resume" => manager.set_queue_paused(id, false),
+                other => return error(404, format!("unknown action `{other}`")),
+            };
+            match result {
+                Ok(()) => ok(json!({
+                    "queues": (Json::Arr(manager.queues().iter().map(Queue::to_json).collect()))
+                })),
+                Err(e) => error(400, e),
+            }
+        }
 
         ("GET", ["defaults"]) => ok(json!({
             "downloadDir": (platform::default_download_dir().to_string_lossy().into_owned()),
@@ -224,6 +270,13 @@ fn add_download(manager: &Arc<Manager>, request: &HttpRequest) -> (u16, Json) {
         Some(value) => (201, value),
         None => (201, json!({"id": (id.as_str())})),
     }
+}
+
+/// Moves a download into a queue. A null or absent queue means the default.
+fn set_queue(manager: &Arc<Manager>, id: &str, request: &HttpRequest) -> Result<(), String> {
+    let body = request.json()?;
+    let queue = body.get("queue").and_then(Json::as_str);
+    manager.set_queue(id, queue)
 }
 
 fn set_limit(manager: &Arc<Manager>, id: &str, request: &HttpRequest) -> Result<(), String> {

@@ -87,6 +87,13 @@ const EN = {
     'toast.cleared': 'Cleared {n} completed downloads',
     'toast.finished': '{name} finished',
     'unit.of': 'of',
+    'nav.queues': 'Queues',
+    'queue.scheduled': 'Scheduled',
+    'queue.paused': 'Paused',
+    'queue.running': 'Running',
+    'queue.window': 'Runs {from} to {to}',
+    'queue.windowOpen': 'Runs from {from}',
+    'add.queue': 'Queue',
 };
 const FA = {
     'action.add': 'افزودن دانلود',
@@ -170,6 +177,13 @@ const FA = {
     'toast.cleared': '{n} دانلود تمام‌شده پاک شد',
     'toast.finished': '{name} تمام شد',
     'unit.of': 'از',
+    'nav.queues': 'صف‌ها',
+    'queue.scheduled': 'زمان‌بندی‌شده',
+    'queue.paused': 'متوقف',
+    'queue.running': 'فعال',
+    'queue.window': 'از {from} تا {to}',
+    'queue.windowOpen': 'از {from}',
+    'add.queue': 'صف',
 };
 const CATALOGUE = { en: EN, fa: FA };
 /** Locales whose script runs right to left. */

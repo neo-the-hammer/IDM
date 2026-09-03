@@ -30,6 +30,7 @@ export type Status =
 
 export interface Download {
   id: string;
+  queue: string | null;
   spec: DownloadSpec;
   status: Status;
   filename: string;
@@ -57,6 +58,25 @@ export interface Totals {
   speedLimit: number;
 }
 
+export interface Schedule {
+  enabled: boolean;
+  /** Minutes since local midnight. */
+  start: number;
+  stop: number | null;
+  /** Bitmask of weekdays; bit 0 is Sunday. */
+  days: number;
+}
+
+export interface Queue {
+  id: string;
+  name: string;
+  concurrency: number;
+  speedLimit: number;
+  schedule: Schedule;
+  completion: { kind: string; command?: string };
+  paused: boolean;
+}
+
 export interface Settings {
   speedLimit: number;
   connections: number;
@@ -67,6 +87,7 @@ export interface Settings {
   language: string;
   theme: string;
   proxy: string | null;
+  queues: Queue[];
   categories: {
     enabled: boolean;
     root: string;

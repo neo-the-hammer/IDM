@@ -8,7 +8,9 @@ const state = {
     downloads: [],
     totals: null,
     settings: null,
+    queues: [],
     filter: 'all',
+    queueFilter: null,
     search: '',
     connected: false,
 };
@@ -36,6 +38,7 @@ function boot() {
             applyTheme(settings.theme);
         if (settings.language)
             setLocale(settings.language);
+        state.queues = settings.queues ?? [];
         redrawAll();
     })
         .catch(reportError);
@@ -128,8 +131,15 @@ function visibleDownloads() {
     const filter = FILTERS.find((f) => f.id === state.filter) ?? FILTERS[0];
     const needle = state.search.trim().toLowerCase();
     return state.downloads.filter((download) => {
-        if (!filter.match(download))
+        if (state.queueFilter !== null) {
+            // An unassigned download belongs to the main queue.
+            const queue = download.queue ?? 'main';
+            if (queue !== state.queueFilter)
+                return false;
+        }
+        else if (!filter.match(download)) {
             return false;
+        }
         if (!needle)
             return true;
         return (download.filename.toLowerCase().includes(needle) ||
@@ -157,12 +167,16 @@ function renderSidebar() {
         button.innerHTML = `<span>${t(filter.key)}</span><span class="count">${counts.get(filter.id) ?? 0}</span>`;
         button.addEventListener('click', () => {
             state.filter = filter.id;
+            state.queueFilter = null;
             renderSidebar();
             renderMain();
         });
         group.append(button);
     }
     sidebar.append(group);
+    if (state.queues.length > 0) {
+        sidebar.append(renderQueueGroup());
+    }
     const actions = document.createElement('div');
     actions.className = 'nav-group';
     const clear = document.createElement('button');
@@ -178,10 +192,81 @@ function renderSidebar() {
     actions.append(clear);
     sidebar.append(actions);
 }
+/**
+ * The queue list, with each queue's schedule and a pause toggle.
+ *
+ * Showing the window inline matters: a queue that is quietly waiting for 1am
+ * looks identical to a broken one unless the interface says why.
+ */
+function renderQueueGroup() {
+    const group = document.createElement('div');
+    group.className = 'nav-group';
+    const heading = document.createElement('h3');
+    heading.textContent = t('nav.queues');
+    group.append(heading);
+    for (const queue of state.queues) {
+        const count = state.downloads.filter((d) => (d.queue ?? 'main') === queue.id).length;
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '2px';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'nav-item';
+        button.setAttribute('aria-current', String(state.queueFilter === queue.id));
+        button.innerHTML =
+            `<span>${escapeText(queue.name)}</span><span class="count">${count}</span>`;
+        button.title = describeSchedule(queue);
+        button.addEventListener('click', () => {
+            state.queueFilter = state.queueFilter === queue.id ? null : queue.id;
+            renderSidebar();
+            renderMain();
+        });
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'btn ghost icon';
+        toggle.style.flex = 'none';
+        toggle.title = queue.paused ? t('action.resume') : t('action.pause');
+        toggle.innerHTML = queue.paused
+            ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'
+            : '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+        toggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            api
+                .queueAction(queue.id, queue.paused ? 'resume' : 'pause')
+                .then(({ queues }) => {
+                state.queues = queues;
+                renderSidebar();
+            })
+                .catch(reportError);
+        });
+        row.append(button, toggle);
+        group.append(row);
+    }
+    return group;
+}
+/** A one-line description of when a queue runs, for the tooltip. */
+function describeSchedule(queue) {
+    if (queue.paused)
+        return t('queue.paused');
+    if (!queue.schedule.enabled)
+        return t('queue.running');
+    const clock = (minutes) => {
+        const h = String(Math.floor(minutes / 60)).padStart(2, '0');
+        const m = String(minutes % 60).padStart(2, '0');
+        return `${h}:${m}`;
+    };
+    return queue.schedule.stop === null
+        ? t('queue.windowOpen', { from: clock(queue.schedule.start) })
+        : t('queue.window', { from: clock(queue.schedule.start), to: clock(queue.schedule.stop) });
+}
+function escapeText(value) {
+    return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
 function renderMain() {
     const main = $('main');
     const downloads = visibleDownloads();
-    main.dataset.filtered = String(state.filter !== 'all' || state.search.trim() !== '');
+    main.dataset.filtered = String(state.filter !== 'all' || state.queueFilter !== null || state.search.trim() !== '');
     renderList(main, downloads, {
         onAction: performAction,
         onOpen: openDetail,
@@ -296,6 +381,13 @@ function openAddDialog() {
     if (state.settings) {
         $('add-connections').value = String(state.settings.connections);
     }
+    const queueSelect = $('add-queue');
+    queueSelect.replaceChildren(...state.queues.map((queue) => {
+        const option = document.createElement('option');
+        option.value = queue.id;
+        option.textContent = queue.name;
+        return option;
+    }));
     dialog.showModal();
     // Offer whatever link is on the clipboard, the way IDM does. It needs
     // permission and silently does nothing when denied, which is fine.
@@ -337,6 +429,9 @@ function submitAdd() {
         request.password = value('add-password');
     if (value('add-referer'))
         request.referer = value('add-referer');
+    const queue = $('add-queue').value;
+    if (queue)
+        request.queue = queue;
     const checksum = value('add-checksum');
     if (checksum) {
         const [maybeAlgo, maybeDigest] = checksum.split(':');

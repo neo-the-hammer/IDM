@@ -10,7 +10,7 @@ Hydra is built in milestones. Each one is independently useful and lands as its 
 | M3 | `hdm-core` — segmented engine, resume, throttle, store | ✅ done |
 | M4 | WinHTTP transport, REST + WebSocket API, `hdmd`, `hdm` CLI | ✅ done |
 | M5 | Themed web UI (12 themes, en/fa, RTL) | ✅ done |
-| M6 | Queues, scheduler, post-download actions | ⏳ |
+| M6 | Queues, scheduler, post-download actions | ✅ done |
 | M7 | Browser extensions + native messaging host | ⏳ |
 | M8 | Python plugin host, site grabber, batch patterns | ⏳ |
 | M9 | Packaging (Windows/Linux/macOS), Tauri shell | ⏳ |

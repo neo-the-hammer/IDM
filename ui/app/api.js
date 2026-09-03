@@ -68,6 +68,18 @@ export class Api {
     clearCompleted() {
         return this.call('POST', '/downloads-clear-completed');
     }
+    queues() {
+        return this.call('GET', '/queues');
+    }
+    saveQueue(queue) {
+        return this.call('PUT', `/queues/${encodeURIComponent(queue.id)}`, queue);
+    }
+    queueAction(id, action) {
+        return this.call('POST', `/queues/${encodeURIComponent(id)}/${action}`);
+    }
+    setDownloadQueue(id, queue) {
+        return this.call('POST', `/downloads/${encodeURIComponent(id)}/queue`, { queue });
+    }
     settings() {
         return this.call('GET', '/settings');
     }

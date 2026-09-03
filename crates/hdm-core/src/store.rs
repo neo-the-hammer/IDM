@@ -6,6 +6,7 @@
 
 use crate::category::Categories;
 use crate::engine::{DownloadSpec, Status, MAX_CONNECTIONS};
+use crate::queue::{default_queues, Queue, MAIN_QUEUE};
 use hdm_crypto::HashAlgo;
 use hdm_json::{json, parse, Json};
 use std::io;
@@ -259,6 +260,8 @@ pub struct Settings {
     pub theme: String,
     /// Proxy applied to downloads that do not specify one.
     pub proxy: Option<String>,
+    /// Named queues, each with its own schedule and limits.
+    pub queues: Vec<Queue>,
 }
 
 impl Settings {
@@ -274,7 +277,20 @@ impl Settings {
             language: "en".into(),
             theme: "hydra-dark".into(),
             proxy: None,
+            queues: default_queues(),
         }
+    }
+
+    /// Looks up a queue, falling back to the main one so a download whose
+    /// queue was deleted still runs instead of being stranded.
+    pub fn queue_for(&self, id: Option<&str>) -> &Queue {
+        let wanted = id.unwrap_or(MAIN_QUEUE);
+        self.queues
+            .iter()
+            .find(|q| q.id == wanted)
+            .or_else(|| self.queues.iter().find(|q| q.id == MAIN_QUEUE))
+            .or_else(|| self.queues.first())
+            .expect("there is always at least one queue")
     }
 
     pub fn to_json(&self) -> Json {
@@ -288,7 +304,8 @@ impl Settings {
             "notifications": (self.notifications),
             "language": (self.language.as_str()),
             "theme": (self.theme.as_str()),
-            "proxy": (self.proxy.clone())
+            "proxy": (self.proxy.clone()),
+            "queues": (Json::Arr(self.queues.iter().map(Queue::to_json).collect()))
         })
     }
 
@@ -308,6 +325,14 @@ impl Settings {
             .map(str::to_string);
         if let Some(categories) = value.get("categories") {
             settings.categories = Categories::from_json(categories, fallback_root);
+        }
+        if let Some(queues) = value.get("queues").and_then(Json::as_arr) {
+            let parsed: Vec<Queue> = queues.iter().filter_map(Queue::from_json).collect();
+            // Never end up with no queues at all: a download with nowhere to
+            // run would sit queued forever with no way to fix it from the UI.
+            if !parsed.is_empty() {
+                settings.queues = parsed;
+            }
         }
         settings
     }

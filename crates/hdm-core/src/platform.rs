@@ -316,3 +316,232 @@ impl Drop for InstanceLock {
         let _ = std::fs::remove_file(&self.path);
     }
 }
+
+/// The local wall-clock time, which is what a schedule is written in terms of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalTime {
+    pub hour: u8,
+    pub minute: u8,
+    /// 0 = Sunday, matching both `struct tm` and Windows' `SYSTEMTIME`.
+    pub weekday: u8,
+}
+
+impl LocalTime {
+    /// Minutes since local midnight, the unit schedules compare in.
+    pub fn minutes(self) -> u16 {
+        self.hour as u16 * 60 + self.minute as u16
+    }
+}
+
+/// Reads the current local time.
+///
+/// Schedules are set in local time because that is how people think about
+/// "start at 2am", and doing the conversion here rather than storing UTC means
+/// a daylight-saving change moves the schedule with the clock, as expected.
+pub fn local_time() -> LocalTime {
+    imp_time::local_time()
+}
+
+#[cfg(unix)]
+mod imp_time {
+    use super::LocalTime;
+    use std::ffi::{c_char, c_int, c_long};
+
+    /// `struct tm`. Only the first nine fields are standard; the two glibc and
+    /// BSD extensions are declared so the struct is large enough for
+    /// `localtime_r` to fill safely on every platform we build for.
+    #[repr(C)]
+    struct Tm {
+        sec: c_int,
+        min: c_int,
+        hour: c_int,
+        mday: c_int,
+        mon: c_int,
+        year: c_int,
+        wday: c_int,
+        yday: c_int,
+        isdst: c_int,
+        gmtoff: c_long,
+        zone: *const c_char,
+    }
+
+    extern "C" {
+        fn localtime_r(clock: *const i64, result: *mut Tm) -> *mut Tm;
+    }
+
+    pub fn local_time() -> LocalTime {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        // Zeroed rather than uninitialised: if localtime_r somehow fails, the
+        // result is a defined midnight-Sunday rather than garbage.
+        let mut tm = Tm {
+            sec: 0,
+            min: 0,
+            hour: 0,
+            mday: 1,
+            mon: 0,
+            year: 70,
+            wday: 0,
+            yday: 0,
+            isdst: 0,
+            gmtoff: 0,
+            zone: std::ptr::null(),
+        };
+        unsafe {
+            if localtime_r(&now, &mut tm).is_null() {
+                return LocalTime {
+                    hour: 0,
+                    minute: 0,
+                    weekday: 0,
+                };
+            }
+        }
+        LocalTime {
+            hour: tm.hour.clamp(0, 23) as u8,
+            minute: tm.min.clamp(0, 59) as u8,
+            weekday: tm.wday.clamp(0, 6) as u8,
+        }
+    }
+}
+
+#[cfg(windows)]
+mod imp_time {
+    use super::LocalTime;
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct SystemTime {
+        year: u16,
+        month: u16,
+        day_of_week: u16,
+        day: u16,
+        hour: u16,
+        minute: u16,
+        second: u16,
+        milliseconds: u16,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetLocalTime(time: *mut SystemTime);
+    }
+
+    pub fn local_time() -> LocalTime {
+        let mut time = SystemTime::default();
+        unsafe { GetLocalTime(&mut time) };
+        LocalTime {
+            hour: time.hour.min(23) as u8,
+            minute: time.minute.min(59) as u8,
+            weekday: time.day_of_week.min(6) as u8,
+        }
+    }
+}
+
+/// Shows a desktop notification, best effort.
+///
+/// Never fails the caller: a missing notification daemon is not a reason for a
+/// finished download to report an error.
+pub fn notify(title: &str, body: &str) {
+    use std::process::Command;
+    // Anything the server or a filename supplied could contain shell-hostile
+    // characters, so every value is passed as a separate argument and never
+    // interpolated into a command line.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = Command::new("notify-send")
+            .args(["--app-name=Hydra", "--icon=folder-download", title, body])
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // osascript takes one script string, so quotes have to be neutralised.
+        let escape = |s: &str| s.replace('\\', "").replace('"', "'");
+        let script = format!(
+            "display notification \"{}\" with title \"{}\"",
+            escape(body),
+            escape(title)
+        );
+        let _ = Command::new("osascript").args(["-e", &script]).spawn();
+    }
+    #[cfg(windows)]
+    {
+        // The toast API is only reachable through PowerShell without pulling in
+        // WinRT bindings. Values are passed through the environment rather than
+        // the script text so a filename cannot inject PowerShell.
+        const SCRIPT: &str = "\
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] > $null; \
+$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(1); \
+$n = $t.GetElementsByTagName('text'); \
+$n.Item(0).AppendChild($t.CreateTextNode($env:HYDRA_TITLE)) > $null; \
+$n.Item(1).AppendChild($t.CreateTextNode($env:HYDRA_BODY)) > $null; \
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Hydra').Show([Windows.UI.Notifications.ToastNotification]::new($t))";
+        let _ = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                SCRIPT,
+            ])
+            .env("HYDRA_TITLE", title)
+            .env("HYDRA_BODY", body)
+            .spawn();
+    }
+}
+
+/// Runs a user-supplied program after a download or queue finishes.
+///
+/// The command is split on whitespace and executed directly rather than
+/// through a shell, so a filename containing `;` or `&&` cannot become a
+/// second command.
+pub fn run_program(command: &str, argument: Option<&str>) -> io::Result<()> {
+    let mut parts = command.split_whitespace();
+    let program = parts
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty command"))?;
+    let mut process = std::process::Command::new(program);
+    process.args(parts);
+    if let Some(argument) = argument {
+        process.arg(argument);
+    }
+    process.spawn().map(|_| ())
+}
+
+/// Reads the system clipboard as text, if a tool for it is available.
+///
+/// Shelling out rather than binding a clipboard API: the daemon often runs
+/// headless, where there is no clipboard at all, and the failure mode of a
+/// missing helper should be "this feature is off" rather than a link error at
+/// build time.
+pub fn read_clipboard() -> Option<String> {
+    use std::process::Command;
+    let run = |program: &str, args: &[&str]| -> Option<String> {
+        let output = Command::new(program).args(args).output().ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&output.stdout).into_owned())
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // Wayland first, then X11; a session may have either.
+        run("wl-paste", &["--no-newline"])
+            .or_else(|| run("xclip", &["-o", "-selection", "clipboard"]))
+            .or_else(|| run("xsel", &["--clipboard", "--output"]))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        run("pbpaste", &[])
+    }
+    #[cfg(windows)]
+    {
+        run(
+            "powershell",
+            &["-NoProfile", "-NonInteractive", "-Command", "Get-Clipboard"],
+        )
+    }
+}
