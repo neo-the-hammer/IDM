@@ -1,0 +1,20 @@
+[package]
+name = "hdm-daemon"
+description = "Hydra Download Manager background daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "hdmd"
+path = "src/main.rs"
+
+[dependencies]
+hdm-json = { path = "../hdm-json" }
+hdm-crypto = { path = "../hdm-crypto" }
+hdm-net = { path = "../hdm-net" }
+hdm-core = { path = "../hdm-core" }
+hdm-api = { path = "../hdm-api" }

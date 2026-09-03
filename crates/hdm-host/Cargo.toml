@@ -1,0 +1,17 @@
+[package]
+name = "hdm-host"
+description = "Native-messaging bridge between browsers and Hydra"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "hdm-host"
+path = "src/main.rs"
+
+[dependencies]
+hdm-json = { path = "../hdm-json" }
+hdm-crypto = { path = "../hdm-crypto" }

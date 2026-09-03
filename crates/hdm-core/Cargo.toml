@@ -1,0 +1,14 @@
+[package]
+name = "hdm-core"
+description = "Segmented download engine, queues and scheduler for Hydra"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+hdm-json = { path = "../hdm-json" }
+hdm-crypto = { path = "../hdm-crypto" }
+hdm-net = { path = "../hdm-net" }

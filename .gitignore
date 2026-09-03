@@ -1,0 +1,24 @@
+/target
+**/target
+*.rs.bk
+Cargo.lock.bak
+
+# UI build output is committed on purpose (see ui/README.md), but not these:
+ui/.tsbuildinfo
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local runtime state produced by hdmd
+/.hydra-dev/
+*.hdm
+*.part
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+[package]
+name = "hdm-net"
+description = "Dependency-free HTTP/1.1, TLS and FTP client for Hydra Download Manager"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+hdm-crypto = { path = "../hdm-crypto" }

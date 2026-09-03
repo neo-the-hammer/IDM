@@ -1,0 +1,11 @@
+[package]
+name = "hdm-crypto"
+description = "Dependency-free MD5/SHA-1/SHA-256/HMAC/base64/CSPRNG primitives for Hydra"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]

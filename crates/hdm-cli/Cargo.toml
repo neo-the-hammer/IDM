@@ -1,0 +1,18 @@
+[package]
+name = "hdm-cli"
+description = "Hydra Download Manager command-line client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "hdm"
+path = "src/main.rs"
+
+[dependencies]
+hdm-json = { path = "../hdm-json" }
+hdm-crypto = { path = "../hdm-crypto" }
+hdm-net = { path = "../hdm-net" }
