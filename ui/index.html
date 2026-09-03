@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Hydra Download Manager</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext y='19' font-size='19'%3E%F0%9F%90%89%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles/themes.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+  <body data-theme="hydra-dark">
+    <div class="app">
+      <div class="brand">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M4 20h16" />
+        </svg>
+        <span>Hydra</span>
+      </div>
+
+      <div class="topbar">
+        <button class="btn primary" id="add-button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          <span data-i18n="action.add">Add download</span>
+        </button>
+        <input
+          type="text"
+          class="search"
+          id="search"
+          data-i18n-placeholder="search.placeholder"
+          placeholder="Search downloads…"
+          aria-label="Search downloads"
+        />
+        <span style="flex: 1"></span>
+        <button class="btn ghost icon" id="resume-all" data-i18n-title="action.resumeAll" title="Resume all">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+        </button>
+        <button class="btn ghost icon" id="pause-all" data-i18n-title="action.pauseAll" title="Pause all">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+        </button>
+        <button class="btn ghost icon" id="settings-button" data-i18n-title="action.settings" title="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
+
+      <nav class="sidebar" id="sidebar" aria-label="Filters"></nav>
+
+      <main class="main" id="main"></main>
+
+      <div class="statusbar">
+        <span class="dot" id="connection-dot"></span>
+        <span id="connection-label" data-i18n="status.connecting">Connecting…</span>
+        <span id="status-speed"></span>
+        <span id="status-counts"></span>
+        <span style="flex: 1"></span>
+        <span id="status-limit"></span>
+      </div>
+    </div>
+
+    <div class="toast-stack" id="toasts" aria-live="polite"></div>
+
+    <!-- Add download -->
+    <dialog id="add-dialog">
+      <form method="dialog" id="add-form">
+        <header>
+          <h2 data-i18n="add.title">Add download</h2>
+          <button type="button" class="btn ghost icon" data-close aria-label="Close">✕</button>
+        </header>
+        <div class="content">
+          <div class="field">
+            <label for="add-url" data-i18n="add.url">URL</label>
+            <input type="text" id="add-url" required placeholder="https://example.com/file.iso" dir="ltr" />
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="add-filename" data-i18n="add.filename">Save as</label>
+              <input type="text" id="add-filename" data-i18n-placeholder="add.filenameAuto" placeholder="From the server" dir="ltr" />
+            </div>
+            <div class="field">
+              <label for="add-connections" data-i18n="add.connections">Connections</label>
+              <input type="number" id="add-connections" min="1" max="32" value="8" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="add-directory" data-i18n="add.directory">Folder</label>
+            <input type="text" id="add-directory" data-i18n-placeholder="add.directoryAuto" placeholder="By category" dir="ltr" />
+          </div>
+
+          <details class="advanced">
+            <summary data-i18n="add.advanced">Advanced</summary>
+            <div class="content-inner">
+              <div class="row">
+                <div class="field">
+                  <label for="add-limit" data-i18n="add.limit">Speed limit</label>
+                  <input type="text" id="add-limit" placeholder="500k, 2M, or empty" dir="ltr" />
+                </div>
+                <div class="field">
+                  <label for="add-checksum" data-i18n="add.checksum">Checksum</label>
+                  <input type="text" id="add-checksum" placeholder="sha256:… or a bare digest" dir="ltr" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="field">
+                  <label for="add-username" data-i18n="add.username">Username</label>
+                  <input type="text" id="add-username" autocomplete="off" />
+                </div>
+                <div class="field">
+                  <label for="add-password" data-i18n="add.password">Password</label>
+                  <input type="password" id="add-password" autocomplete="off" />
+                </div>
+              </div>
+              <div class="field">
+                <label for="add-referer" data-i18n="add.referer">Referer</label>
+                <input type="text" id="add-referer" dir="ltr" />
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="add-paused" />
+                <span data-i18n="add.paused">Add without starting</span>
+              </label>
+            </div>
+          </details>
+        </div>
+        <footer>
+          <button type="button" class="btn" data-close data-i18n="action.cancel">Cancel</button>
+          <button type="submit" class="btn primary" data-i18n="action.add">Add download</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- Settings -->
+    <dialog id="settings-dialog">
+      <header>
+        <h2 data-i18n="settings.title">Settings</h2>
+        <button type="button" class="btn ghost icon" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="content">
+        <div class="field">
+          <label data-i18n="settings.theme">Theme</label>
+          <div class="theme-grid" id="theme-grid"></div>
+        </div>
+        <div class="field">
+          <label data-i18n="settings.accent">Accent colour</label>
+          <div class="accent-row" id="accent-row"></div>
+          <span class="hint" data-i18n="settings.accentHint">Overrides the theme's own accent.</span>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="settings-language" data-i18n="settings.language">Language</label>
+            <select id="settings-language">
+              <option value="en">English</option>
+              <option value="fa">فارسی</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="settings-connections" data-i18n="settings.connections">Default connections</label>
+            <input type="number" id="settings-connections" min="1" max="32" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="settings-limit" data-i18n="settings.speedLimit">Global speed limit</label>
+            <input type="text" id="settings-limit" placeholder="unlimited" dir="ltr" />
+          </div>
+          <div class="field">
+            <label for="settings-concurrent" data-i18n="settings.maxConcurrent">Simultaneous downloads</label>
+            <input type="number" id="settings-concurrent" min="1" max="64" />
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="settings-notifications" />
+          <span data-i18n="settings.notifications">Notify me when a download finishes</span>
+        </label>
+      </div>
+      <footer>
+        <button type="button" class="btn" data-close data-i18n="action.close">Close</button>
+        <button type="button" class="btn primary" id="settings-save" data-i18n="action.save">Save</button>
+      </footer>
+    </dialog>
+
+    <!-- Download detail -->
+    <dialog id="detail-dialog">
+      <header>
+        <h2 id="detail-title">—</h2>
+        <button type="button" class="btn ghost icon" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="content detail" id="detail-body"></div>
+      <footer>
+        <button type="button" class="btn" data-close data-i18n="action.close">Close</button>
+      </footer>
+    </dialog>
+
+    <script type="module" src="app/main.js"></script>
+  </body>
+</html>

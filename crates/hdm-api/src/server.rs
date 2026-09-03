@@ -96,6 +96,22 @@ impl ApiServer {
             return;
         };
 
+        // A hostname that resolves to 127.0.0.1 lets a remote page reach this
+        // server while keeping its own origin -- the DNS rebinding attack. The
+        // Origin check below stops the scripted case; requiring a loopback Host
+        // stops it before routing, including for navigations that send no
+        // Origin at all.
+        if !host_is_loopback(request.header("Host")) {
+            let _ = write_response(
+                &mut stream,
+                403,
+                "application/json",
+                br#"{"error":"unrecognized Host header"}"#,
+                None,
+            );
+            return;
+        }
+
         // A browser page on another origin must not be able to drive the
         // daemon, so cross-origin requests are refused before anything else.
         if let Some(origin) = request.header("Origin") {
@@ -287,6 +303,11 @@ impl ApiServer {
 
         match std::fs::read(&path) {
             Ok(body) => {
+                let body = if path.extension().and_then(|e| e.to_str()) == Some("html") {
+                    inject_token(&body, &self.token)
+                } else {
+                    body
+                };
                 let _ = write_response(stream, 200, mime_for(&path), &body, None);
             }
             Err(_) => {
@@ -294,6 +315,46 @@ impl ApiServer {
             }
         }
     }
+}
+
+/// Stamps the API token into the served page so the UI can authenticate.
+///
+/// This is safe because the page is only ever served over loopback to a
+/// request whose Host and Origin have already been checked: a remote page
+/// cannot read the response cross-origin, and a local process could read the
+/// token file directly in any case.
+fn inject_token(html: &[u8], token: &str) -> Vec<u8> {
+    let text = String::from_utf8_lossy(html);
+    let escaped = token
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;");
+    let tag = format!("<meta name=\"hydra-token\" content=\"{escaped}\" />\n    ");
+    match text.find("<title>") {
+        Some(index) => {
+            let mut out = String::with_capacity(text.len() + tag.len());
+            out.push_str(&text[..index]);
+            out.push_str(&tag);
+            out.push_str(&text[index..]);
+            out.into_bytes()
+        }
+        // No <title> to anchor to; the UI falls back to ?token=.
+        None => html.to_vec(),
+    }
+}
+
+/// Accepts only Host values naming the loopback interface.
+fn host_is_loopback(host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        // HTTP/1.1 requires a Host header; a request without one is malformed.
+        return false;
+    };
+    // Strip the port, taking care with a bracketed IPv6 literal.
+    let name = match host.strip_prefix('[') {
+        Some(rest) => rest.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    matches!(name, "127.0.0.1" | "localhost" | "::1" | "[::1]") || name.starts_with("127.")
 }
 
 /// Resolves `relative` under `root`, refusing anything that escapes it.

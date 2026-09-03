@@ -34,6 +34,26 @@ Hydra aims to match it feature-for-feature while being open, cross-platform, and
 | 🌍 **Localized** | English and Persian, with full right-to-left layout support |
 | 🧩 **Scriptable** | REST + WebSocket API, a real CLI, and a Python plugin system for site extractors |
 
+## What it looks like
+
+![Hydra downloading four files, showing per-connection progress bars](docs/screenshots/theme-hydra-dark.png)
+
+Each download shows one bar per connection, so segmentation is something you can
+watch rather than a claim on a feature list. Twelve themes ship in the box:
+
+| | | |
+| --- | --- | --- |
+| ![Nord](docs/screenshots/theme-nord.png) | ![Catppuccin Latte](docs/screenshots/theme-catppuccin-latte.png) | ![Gruvbox](docs/screenshots/theme-gruvbox-dark.png) |
+| Nord | Catppuccin Latte | Gruvbox |
+| ![Tokyo Night](docs/screenshots/theme-tokyo-night.png) | ![Solarized Light](docs/screenshots/theme-solarized-light.png) | ![Rosé Pine](docs/screenshots/theme-rose-pine.png) |
+| Tokyo Night | Solarized Light | Rosé Pine |
+
+And the whole interface flips for Persian, using CSS logical properties rather
+than a mirrored stylesheet — filenames stay left-to-right so they remain
+readable, and numbers are localized:
+
+![The interface in Persian, laid out right to left](docs/screenshots/persian-rtl.png)
+
 ## Architecture
 
 ```

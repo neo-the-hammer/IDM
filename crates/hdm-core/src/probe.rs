@@ -30,19 +30,48 @@ impl Probe {
 
 /// Asks the server about `url`.
 ///
-/// A `HEAD` is tried first because it is free, but a surprising number of
-/// servers — CDNs with signed URLs, PHP download scripts, some object stores —
-/// answer `HEAD` with 405, or with a 200 whose headers do not match what a
-/// `GET` would return. So a single-byte ranged `GET` is the fallback, and it is
-/// also the more trustworthy answer: a `206` response is direct proof that
-/// range requests work, where `Accept-Ranges` is only a claim.
+/// A `HEAD` is tried first because it is cheap, but a surprising number of
+/// servers -- CDNs with signed URLs, PHP download scripts, some object stores
+/// -- answer `HEAD` with 405, or with headers that do not match what a `GET`
+/// would return.
+///
+/// More importantly, `Accept-Ranges: bytes` in a `HEAD` response is only a
+/// claim, and plenty of servers make it without honouring `Range` on the
+/// actual `GET`. Segmentation correctness depends on the answer, and the cost
+/// of being wrong is the whole download failing partway through, so when a
+/// download looks worth splitting the claim is confirmed with a one-byte
+/// ranged request: a `206` is proof, anything else means one connection.
 pub fn probe(client: &Client, url: &Url) -> io::Result<Probe> {
-    if let Ok(probe) = probe_with_head(client, url) {
+    if let Ok(mut probe) = probe_with_head(client, url) {
         if probe.status < 400 && probe.total.is_some() {
+            if probe.supports_ranges && probe.total.unwrap_or(0) > MIN_SEGMENTABLE {
+                probe.supports_ranges = confirm_ranges(client, &probe.final_url);
+            }
             return Ok(probe);
         }
     }
     probe_with_range(client, url)
+}
+
+/// Files below this are downloaded on one connection regardless, so there is
+/// nothing to confirm and no reason to spend a request confirming it.
+const MIN_SEGMENTABLE: u64 = 256 * 1024;
+
+/// Verifies that the server really honours `Range`, rather than merely saying so.
+fn confirm_ranges(client: &Client, url: &Url) -> bool {
+    let request = Request::get(url.clone()).with_range(0, Some(0));
+    match client.send(request) {
+        Ok(fetch) => {
+            let partial = fetch.response.is_partial();
+            // A 200 here means the server is about to stream the entire file
+            // down a connection we do not want; close it rather than read it.
+            fetch.response.shutdown();
+            partial
+        }
+        // If the confirmation request fails outright, assume no range support:
+        // one slow download beats a corrupt one.
+        Err(_) => false,
+    }
 }
 
 fn probe_with_head(client: &Client, url: &Url) -> io::Result<Probe> {

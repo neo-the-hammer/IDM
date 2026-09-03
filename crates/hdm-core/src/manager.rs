@@ -104,6 +104,11 @@ impl Manager {
         }
 
         let mut record = DownloadRecord::new(spec);
+        // Show something useful immediately. A download that has not been
+        // probed yet has no server-supplied name, and displaying the raw URL
+        // in the list is a poor substitute; the engine replaces this with the
+        // real name once Content-Disposition has been seen.
+        record.filename = hdm_net::http::sanitize_filename(&guess);
         record.category = category;
         record.status = if autostart {
             Status::Queued

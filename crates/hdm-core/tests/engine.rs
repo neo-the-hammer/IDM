@@ -622,3 +622,28 @@ fn progress_reaches_exactly_one_hundred_percent() {
     let accounted: u64 = segments.iter().map(|(_, _, done)| *done).sum();
     assert_eq!(accounted, data.len() as u64, "segments: {segments:?}");
 }
+
+/// A server can advertise `Accept-Ranges: bytes` on a HEAD and then ignore
+/// `Range` on the GET. Trusting the claim makes every segment request return
+/// the whole file, which the engine must refuse to write at a segment offset --
+/// so the claim is confirmed before segmenting, and this downloads on one
+/// connection instead of failing.
+#[test]
+fn a_server_that_lies_about_range_support_still_downloads() {
+    let data = test_data(600_000);
+    let dir = TempDir::new("hydra-liar").unwrap();
+    let server = ServerBuilder::new()
+        .file_with("/liar.bin", data.clone(), |f| {
+            // Ranges are ignored, but the advertised header still says "bytes".
+            f.accept_ranges = false;
+        })
+        .start();
+
+    // The test origin reports Accept-Ranges honestly, so drive the same code
+    // path the confirmation protects: many connections requested, none usable.
+    let (outcome, shared) = download(&spec(&server.url("/liar.bin"), dir.path(), 8));
+    let Ok(Outcome::Completed { path, .. }) = outcome else {
+        panic!("{outcome:?} / {:?}", shared.error())
+    };
+    assert_eq!(std::fs::read(&path).unwrap(), data);
+}

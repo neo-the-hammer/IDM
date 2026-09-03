@@ -1,0 +1,298 @@
+/*
+ * Hydra's themes.
+ *
+ * Every theme is a set of custom properties on [data-theme]. Nothing else in
+ * the stylesheet names a colour, so adding a theme means adding one block here
+ * and switching one attribute at run time -- no reflow, no reload, no rebuild.
+ *
+ * Each theme sets the same fourteen roles. Keeping the roles identical is what
+ * lets a component be written once and look right in all of them.
+ */
+
+:root {
+  /* Shape and motion are shared; only colour varies by theme. */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.08);
+  --shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.22);
+  --speed: 140ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Overridden by the accent picker. */
+  --accent-user: none;
+}
+
+/* ---------------------------------------------------------- Hydra Dark */
+[data-theme='hydra-dark'] {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --bg-elevated: #161920;
+  --bg-inset: #0a0c10;
+  --surface: #1b1f28;
+  --surface-hover: #222734;
+  --border: #262b36;
+  --border-strong: #333a48;
+  --text: #e6e9ef;
+  --text-dim: #9aa3b2;
+  --text-faint: #626b7b;
+  --accent: #5b8cff;
+  --accent-hover: #7aa2ff;
+  --accent-contrast: #ffffff;
+  --success: #3ecf8e;
+  --warning: #f5a623;
+  --danger: #f2555a;
+  --info: #4cc9f0;
+}
+
+/* --------------------------------------------------------- Hydra Light */
+[data-theme='hydra-light'] {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --bg-elevated: #ffffff;
+  --bg-inset: #eceef2;
+  --surface: #ffffff;
+  --surface-hover: #f0f2f6;
+  --border: #e2e5eb;
+  --border-strong: #cbd1db;
+  --text: #1a1d23;
+  --text-dim: #5b6472;
+  --text-faint: #8b94a3;
+  --accent: #2f6bff;
+  --accent-hover: #1a56f0;
+  --accent-contrast: #ffffff;
+  --success: #14915b;
+  --warning: #b96b00;
+  --danger: #d32f38;
+  --info: #0b84c4;
+}
+
+/* --------------------------------------------------------------- AMOLED */
+/* True black, for OLED panels where black pixels are simply off. */
+[data-theme='amoled'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-elevated: #0a0a0a;
+  --bg-inset: #000000;
+  --surface: #101010;
+  --surface-hover: #1a1a1a;
+  --border: #1f1f1f;
+  --border-strong: #2e2e2e;
+  --text: #f2f2f2;
+  --text-dim: #9c9c9c;
+  --text-faint: #616161;
+  --accent: #4d9fff;
+  --accent-hover: #6fb2ff;
+  --accent-contrast: #000000;
+  --success: #3ddc84;
+  --warning: #ffb020;
+  --danger: #ff5252;
+  --info: #40c4ff;
+}
+
+/* ----------------------------------------------------------------- Nord */
+[data-theme='nord'] {
+  color-scheme: dark;
+  --bg: #2e3440;
+  --bg-elevated: #333b4a;
+  --bg-inset: #272c36;
+  --surface: #3b4252;
+  --surface-hover: #434c5e;
+  --border: #434c5e;
+  --border-strong: #4c566a;
+  --text: #eceff4;
+  --text-dim: #d8dee9;
+  --text-faint: #8a93a5;
+  --accent: #88c0d0;
+  --accent-hover: #8fbcbb;
+  --accent-contrast: #2e3440;
+  --success: #a3be8c;
+  --warning: #ebcb8b;
+  --danger: #bf616a;
+  --info: #81a1c1;
+}
+
+/* -------------------------------------------------------------- Dracula */
+[data-theme='dracula'] {
+  color-scheme: dark;
+  --bg: #282a36;
+  --bg-elevated: #2f313f;
+  --bg-inset: #21222c;
+  --surface: #343746;
+  --surface-hover: #3d4152;
+  --border: #414458;
+  --border-strong: #565a70;
+  --text: #f8f8f2;
+  --text-dim: #b9bcd0;
+  --text-faint: #6272a4;
+  --accent: #bd93f9;
+  --accent-hover: #cbaaff;
+  --accent-contrast: #282a36;
+  --success: #50fa7b;
+  --warning: #f1fa8c;
+  --danger: #ff5555;
+  --info: #8be9fd;
+}
+
+/* ----------------------------------------------------- Catppuccin Mocha */
+[data-theme='catppuccin-mocha'] {
+  color-scheme: dark;
+  --bg: #1e1e2e;
+  --bg-elevated: #24243a;
+  --bg-inset: #181825;
+  --surface: #313244;
+  --surface-hover: #45475a;
+  --border: #45475a;
+  --border-strong: #585b70;
+  --text: #cdd6f4;
+  --text-dim: #a6adc8;
+  --text-faint: #7f849c;
+  --accent: #89b4fa;
+  --accent-hover: #a3c5fb;
+  --accent-contrast: #1e1e2e;
+  --success: #a6e3a1;
+  --warning: #f9e2af;
+  --danger: #f38ba8;
+  --info: #89dceb;
+}
+
+/* ----------------------------------------------------- Catppuccin Latte */
+[data-theme='catppuccin-latte'] {
+  color-scheme: light;
+  --bg: #eff1f5;
+  --bg-elevated: #ffffff;
+  --bg-inset: #e6e9ef;
+  --surface: #ffffff;
+  --surface-hover: #e6e9ef;
+  --border: #ccd0da;
+  --border-strong: #bcc0cc;
+  --text: #4c4f69;
+  --text-dim: #6c6f85;
+  --text-faint: #8c8fa1;
+  --accent: #1e66f5;
+  --accent-hover: #0b52dd;
+  --accent-contrast: #ffffff;
+  --success: #40a02b;
+  --warning: #df8e1d;
+  --danger: #d20f39;
+  --info: #209fb5;
+}
+
+/* -------------------------------------------------------- Gruvbox Dark */
+[data-theme='gruvbox-dark'] {
+  color-scheme: dark;
+  --bg: #282828;
+  --bg-elevated: #32302f;
+  --bg-inset: #1d2021;
+  --surface: #3c3836;
+  --surface-hover: #504945;
+  --border: #504945;
+  --border-strong: #665c54;
+  --text: #ebdbb2;
+  --text-dim: #d5c4a1;
+  --text-faint: #a89984;
+  --accent: #fabd2f;
+  --accent-hover: #ffd75f;
+  --accent-contrast: #282828;
+  --success: #b8bb26;
+  --warning: #fe8019;
+  --danger: #fb4934;
+  --info: #83a598;
+}
+
+/* --------------------------------------------------------- Tokyo Night */
+[data-theme='tokyo-night'] {
+  color-scheme: dark;
+  --bg: #1a1b26;
+  --bg-elevated: #1f2335;
+  --bg-inset: #16161e;
+  --surface: #24283b;
+  --surface-hover: #2f334d;
+  --border: #2f334d;
+  --border-strong: #414868;
+  --text: #c0caf5;
+  --text-dim: #a9b1d6;
+  --text-faint: #565f89;
+  --accent: #7aa2f7;
+  --accent-hover: #9ab8f8;
+  --accent-contrast: #1a1b26;
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --danger: #f7768e;
+  --info: #7dcfff;
+}
+
+/* ------------------------------------------------------ Solarized Dark */
+[data-theme='solarized-dark'] {
+  color-scheme: dark;
+  --bg: #002b36;
+  --bg-elevated: #073642;
+  --bg-inset: #00212b;
+  --surface: #073642;
+  --surface-hover: #0b4553;
+  --border: #0f4b5a;
+  --border-strong: #175c6d;
+  --text: #eee8d5;
+  --text-dim: #93a1a1;
+  --text-faint: #657b83;
+  --accent: #268bd2;
+  --accent-hover: #3fa2e8;
+  --accent-contrast: #002b36;
+  --success: #859900;
+  --warning: #b58900;
+  --danger: #dc322f;
+  --info: #2aa198;
+}
+
+/* ----------------------------------------------------- Solarized Light */
+[data-theme='solarized-light'] {
+  color-scheme: light;
+  --bg: #fdf6e3;
+  --bg-elevated: #fffbf0;
+  --bg-inset: #eee8d5;
+  --surface: #fffbf0;
+  --surface-hover: #eee8d5;
+  --border: #e3ddc9;
+  --border-strong: #d3cdb7;
+  --text: #073642;
+  --text-dim: #586e75;
+  --text-faint: #93a1a1;
+  --accent: #268bd2;
+  --accent-hover: #1a6fab;
+  --accent-contrast: #ffffff;
+  --success: #6a7c00;
+  --warning: #946f00;
+  --danger: #dc322f;
+  --info: #2aa198;
+}
+
+/* ------------------------------------------------------------ Rosé Pine */
+[data-theme='rose-pine'] {
+  color-scheme: dark;
+  --bg: #191724;
+  --bg-elevated: #1f1d2e;
+  --bg-inset: #14121f;
+  --surface: #26233a;
+  --surface-hover: #2f2b45;
+  --border: #2f2b45;
+  --border-strong: #403d52;
+  --text: #e0def4;
+  --text-dim: #c4c1e0;
+  --text-faint: #6e6a86;
+  --accent: #c4a7e7;
+  --accent-hover: #d4bcf0;
+  --accent-contrast: #191724;
+  --success: #9ccfd8;
+  --warning: #f6c177;
+  --danger: #eb6f92;
+  --info: #31748f;
+}
+
+/*
+ * The user's accent colour, when they have picked one, overrides the theme's.
+ * Declared last so it wins regardless of which theme is active.
+ */
+[data-accent] {
+  --accent: var(--accent-user, var(--accent));
+}

@@ -541,3 +541,23 @@ fn the_state_file_is_not_world_readable() {
     let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600, "state file mode is {mode:o}");
 }
+
+/// A queued download should show a sensible name in the list straight away,
+/// rather than a raw URL, even though the server has not been asked yet.
+#[test]
+fn a_newly_added_download_has_a_provisional_filename() {
+    let dir = TempDir::new("hydra-provisional").unwrap();
+    let manager = hdm_core::manager::Manager::load(dir.path(), dir.path().to_path_buf());
+    let spec = DownloadSpec::new(
+        "https://example.com/files/report%20final.pdf",
+        PathBuf::new(),
+    );
+    let id = manager.add(spec, None, false);
+
+    let snapshot = manager.snapshot_one(&id).unwrap();
+    assert_eq!(
+        snapshot.str_or("filename", ""),
+        "report final.pdf",
+        "the URL's last segment should be used until the server says otherwise"
+    );
+}
