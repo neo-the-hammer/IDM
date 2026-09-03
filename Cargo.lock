@@ -9,12 +9,15 @@ dependencies = [
  "hdm-core",
  "hdm-crypto",
  "hdm-json",
+ "hdm-net",
+ "hdm-testserver",
 ]
 
 [[package]]
 name = "hdm-cli"
 version = "0.1.0"
 dependencies = [
+ "hdm-core",
  "hdm-crypto",
  "hdm-json",
  "hdm-net",

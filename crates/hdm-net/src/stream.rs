@@ -144,7 +144,7 @@ impl Stream {
     /// watching a button they already pressed. Shutting the socket down from
     /// the outside makes the read return at once.
     pub fn shutdown_handle(&self) -> io::Result<ShutdownHandle> {
-        Ok(ShutdownHandle(self.tcp().try_clone()?))
+        Ok(ShutdownHandle::Socket(self.tcp().try_clone()?))
     }
 }
 
@@ -190,13 +190,22 @@ impl TlsContextRef {
     }
 }
 
-/// A cloneable handle for closing a connection from another thread.
-#[derive(Debug)]
-pub struct ShutdownHandle(TcpStream);
+/// A handle for closing a connection from another thread.
+pub enum ShutdownHandle {
+    Socket(TcpStream),
+    #[cfg(windows)]
+    WinHttp(crate::winhttp::RequestHandle),
+}
 
 impl ShutdownHandle {
     /// Closes the connection, unblocking any thread reading from it.
     pub fn shutdown(&self) {
-        let _ = self.0.shutdown(std::net::Shutdown::Both);
+        match self {
+            ShutdownHandle::Socket(tcp) => {
+                let _ = tcp.shutdown(std::net::Shutdown::Both);
+            }
+            #[cfg(windows)]
+            ShutdownHandle::WinHttp(request) => request.abort(),
+        }
     }
 }

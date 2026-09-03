@@ -63,6 +63,15 @@ impl Request {
         self
     }
 
+    /// Applies the default headers for a transport that manages its own
+    /// connection, such as WinHTTP.
+    pub fn prepare_headers(&mut self) {
+        self.apply_defaults(true, false);
+        // WinHTTP owns connection reuse; saying otherwise would fight it.
+        self.headers.remove("Connection");
+        self.headers.remove("Proxy-Connection");
+    }
+
     /// Fills in the headers every request needs, without overriding anything
     /// the caller (or the browser extension) already set.
     fn apply_defaults(&mut self, keep_alive: bool, via_proxy: bool) {
@@ -132,7 +141,10 @@ impl Response {
         let (status, reason, headers) = loop {
             let (status, reason) = read_status_line(&mut reader)?;
             let headers = read_headers(&mut reader)?;
-            if (100..200).contains(&status) {
+            // 1xx responses precede the real one and are skipped -- except 101,
+            // which is not informational: it ends the HTTP exchange and hands
+            // the connection to another protocol.
+            if (102..200).contains(&status) || status == 100 {
                 continue;
             }
             break (status, reason, headers);
@@ -143,7 +155,7 @@ impl Response {
             status,
             reason,
             headers,
-            body: Body { reader, mode },
+            body: Body::socket(reader, mode),
         })
     }
 
@@ -239,12 +251,25 @@ impl Response {
 
     /// Closes the underlying connection immediately, unblocking any read.
     pub fn shutdown(&self) {
-        self.body.reader.get_ref().shutdown();
+        self.body.shutdown();
     }
 
     /// A handle for closing this response's connection from another thread.
     pub fn shutdown_handle(&self) -> io::Result<crate::stream::ShutdownHandle> {
-        self.body.reader.get_ref().shutdown_handle()
+        self.body.shutdown_handle()
+    }
+
+    /// Wraps a completed WinHTTP exchange as a `Response`.
+    #[cfg(windows)]
+    pub fn from_winhttp(exchange: crate::winhttp::WinHttpExchange) -> Response {
+        Response {
+            status: exchange.status,
+            reason: exchange.reason,
+            headers: exchange.headers,
+            body: Body {
+                source: BodySource::WinHttp(exchange.body),
+            },
+        }
     }
 }
 
@@ -274,6 +299,8 @@ impl BodyMode {
             || status == 304
             || (100..200).contains(&status)
         {
+            // 101 included: after the handshake the bytes belong to whatever
+            // protocol took over, not to an HTTP body.
             return Ok(BodyMode::Empty);
         }
         if let Some(te) = headers.get("Transfer-Encoding") {
@@ -311,24 +338,71 @@ impl BodyMode {
 }
 
 /// The response body, as a `Read`.
+///
+/// The bytes come either from a socket we frame ourselves, or from WinHTTP,
+/// which has already applied transfer decoding. Both look identical to the
+/// engine above.
 pub struct Body {
-    reader: BufReader<Stream>,
-    mode: BodyMode,
+    source: BodySource,
+}
+
+enum BodySource {
+    Socket {
+        reader: BufReader<Stream>,
+        mode: BodyMode,
+    },
+    #[cfg(windows)]
+    WinHttp(crate::winhttp::WinHttpBody),
 }
 
 impl Body {
+    fn socket(reader: BufReader<Stream>, mode: BodyMode) -> Body {
+        Body {
+            source: BodySource::Socket { reader, mode },
+        }
+    }
+
     /// Whether the body has a known length that has been fully consumed.
     /// Used to decide whether a connection may be reused.
     pub fn is_complete(&self) -> bool {
-        matches!(
-            self.mode,
-            BodyMode::Empty | BodyMode::Length(0) | BodyMode::Chunked(ChunkState::Done)
-        )
+        match &self.source {
+            BodySource::Socket { mode, .. } => matches!(
+                mode,
+                BodyMode::Empty | BodyMode::Length(0) | BodyMode::Chunked(ChunkState::Done)
+            ),
+            #[cfg(windows)]
+            BodySource::WinHttp(_) => false,
+        }
     }
 
     /// Recovers the connection for reuse, if the body was framed and finished.
     pub fn into_stream(self) -> Option<Stream> {
-        self.is_complete().then(|| self.reader.into_inner())
+        if !self.is_complete() {
+            return None;
+        }
+        match self.source {
+            BodySource::Socket { reader, .. } => Some(reader.into_inner()),
+            #[cfg(windows)]
+            BodySource::WinHttp(_) => None,
+        }
+    }
+
+    fn shutdown(&self) {
+        match &self.source {
+            BodySource::Socket { reader, .. } => reader.get_ref().shutdown(),
+            #[cfg(windows)]
+            BodySource::WinHttp(body) => body.abort_handle().abort(),
+        }
+    }
+
+    fn shutdown_handle(&self) -> io::Result<crate::stream::ShutdownHandle> {
+        match &self.source {
+            BodySource::Socket { reader, .. } => reader.get_ref().shutdown_handle(),
+            #[cfg(windows)]
+            BodySource::WinHttp(body) => {
+                Ok(crate::stream::ShutdownHandle::WinHttp(body.abort_handle()))
+            }
+        }
     }
 }
 
@@ -345,88 +419,92 @@ impl Read for Body {
         if buf.is_empty() {
             return Ok(0);
         }
-        match &mut self.mode {
-            BodyMode::Empty => Ok(0),
-            BodyMode::Length(remaining) => {
-                if *remaining == 0 {
-                    return Ok(0);
+        match &mut self.source {
+            #[cfg(windows)]
+            BodySource::WinHttp(body) => body.read(buf),
+            BodySource::Socket { reader, mode } => match mode {
+                BodyMode::Empty => Ok(0),
+                BodyMode::Length(remaining) => {
+                    if *remaining == 0 {
+                        return Ok(0);
+                    }
+                    let want = buf.len().min(*remaining as usize);
+                    let n = reader.read(&mut buf[..want])?;
+                    if n == 0 {
+                        // The socket closed with bytes still outstanding.
+                        // Saying so explicitly is what lets the engine retry
+                        // the segment instead of writing a short file.
+                        return Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            format!("connection closed with {remaining} bytes still expected"),
+                        ));
+                    }
+                    *remaining -= n as u64;
+                    Ok(n)
                 }
-                let want = buf.len().min(*remaining as usize);
-                let n = self.reader.read(&mut buf[..want])?;
-                if n == 0 {
-                    // The socket closed with bytes still outstanding. Saying so
-                    // explicitly is what lets the engine retry the segment
-                    // instead of writing a short file.
-                    return Err(io::Error::new(
-                        io::ErrorKind::UnexpectedEof,
-                        format!("connection closed with {remaining} bytes still expected"),
-                    ));
-                }
-                *remaining -= n as u64;
-                Ok(n)
-            }
-            BodyMode::UntilEof => self.reader.read(buf),
-            BodyMode::Chunked(_) => self.read_chunked(buf),
+                BodyMode::UntilEof => reader.read(buf),
+                BodyMode::Chunked(state) => read_chunked(reader, state, buf),
+            },
         }
     }
 }
 
-impl Body {
-    fn read_chunked(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        loop {
-            let BodyMode::Chunked(state) = &mut self.mode else {
-                unreachable!("read_chunked is only called in chunked mode")
-            };
-            match state {
-                ChunkState::Done => return Ok(0),
-                ChunkState::NeedSize => {
-                    let line = read_line(&mut self.reader)?;
-                    // A chunk-size line may carry extensions after a ';'.
-                    let size_text = line.split(';').next().unwrap_or("").trim();
-                    let size = u64::from_str_radix(size_text, 16)
-                        .map_err(|_| io::Error::other(format!("bad chunk size: {size_text:?}")))?;
-                    *state = if size == 0 {
-                        ChunkState::Trailers
-                    } else {
-                        ChunkState::InChunk(size)
-                    };
+/// Decodes chunked transfer encoding.
+fn read_chunked(
+    reader: &mut BufReader<Stream>,
+    state: &mut ChunkState,
+    buf: &mut [u8],
+) -> io::Result<usize> {
+    loop {
+        match state {
+            ChunkState::Done => return Ok(0),
+            ChunkState::NeedSize => {
+                let line = read_line(reader)?;
+                // A chunk-size line may carry extensions after a ';'.
+                let size_text = line.split(';').next().unwrap_or("").trim();
+                let size = u64::from_str_radix(size_text, 16)
+                    .map_err(|_| io::Error::other(format!("bad chunk size: {size_text:?}")))?;
+                *state = if size == 0 {
+                    ChunkState::Trailers
+                } else {
+                    ChunkState::InChunk(size)
+                };
+            }
+            ChunkState::InChunk(remaining) => {
+                let want = buf.len().min(*remaining as usize);
+                let n = reader.read(&mut buf[..want])?;
+                if n == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "connection closed mid-chunk",
+                    ));
                 }
-                ChunkState::InChunk(remaining) => {
-                    let want = buf.len().min(*remaining as usize);
-                    let n = self.reader.read(&mut buf[..want])?;
-                    if n == 0 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::UnexpectedEof,
-                            "connection closed mid-chunk",
-                        ));
+                *remaining -= n as u64;
+                if *remaining == 0 {
+                    // Consume the CRLF that terminates the chunk data.
+                    let trailing = read_line(reader)?;
+                    if !trailing.is_empty() {
+                        return Err(io::Error::other("chunk not terminated by CRLF"));
                     }
-                    *remaining -= n as u64;
-                    if *remaining == 0 {
-                        // Consume the CRLF that terminates the chunk data.
-                        let trailing = read_line(&mut self.reader)?;
-                        if !trailing.is_empty() {
-                            return Err(io::Error::other("chunk not terminated by CRLF"));
-                        }
-                        *state = ChunkState::NeedSize;
-                    }
-                    return Ok(n);
+                    *state = ChunkState::NeedSize;
                 }
-                ChunkState::Trailers => {
-                    // Discard trailer headers up to the blank line.
-                    let mut count = 0;
-                    loop {
-                        let line = read_line(&mut self.reader)?;
-                        if line.is_empty() {
-                            break;
-                        }
-                        count += 1;
-                        if count > MAX_HEADERS {
-                            return Err(io::Error::other("too many trailer headers"));
-                        }
+                return Ok(n);
+            }
+            ChunkState::Trailers => {
+                // Discard trailer headers up to the blank line.
+                let mut count = 0;
+                loop {
+                    let line = read_line(reader)?;
+                    if line.is_empty() {
+                        break;
                     }
-                    *state = ChunkState::Done;
-                    return Ok(0);
+                    count += 1;
+                    if count > MAX_HEADERS {
+                        return Err(io::Error::other("too many trailer headers"));
+                    }
                 }
+                *state = ChunkState::Done;
+                return Ok(0);
             }
         }
     }

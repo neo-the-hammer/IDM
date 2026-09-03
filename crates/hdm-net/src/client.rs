@@ -16,6 +16,9 @@ pub struct ClientConfig {
     #[cfg(unix)]
     pub tls: crate::tls::TlsConfig,
     pub proxy: Option<Proxy>,
+    /// Skips certificate validation. On Unix this mirrors `tls.insecure`; on
+    /// Windows it is the only place the flag lives.
+    pub tls_insecure: bool,
     /// Credentials to offer when the server asks for them.
     pub credentials: Option<Credentials>,
     /// Extra headers applied to every request. The browser extension uses this
@@ -103,6 +106,17 @@ impl Client {
             request.headers.set_if_absent("Cookie", header);
         }
 
+        let response = self.execute_transport(&mut request)?;
+        self.cookies
+            .lock()
+            .unwrap()
+            .store_response(&response.headers, &request.url);
+        Ok(response)
+    }
+
+    /// Performs one exchange on whichever transport this platform uses.
+    #[cfg(not(windows))]
+    fn execute_transport(&self, request: &mut Request) -> io::Result<Response> {
         let use_proxy = self
             .config
             .proxy
@@ -122,12 +136,35 @@ impl Client {
         // to gain from keep-alive and a dedicated connection per segment is
         // simpler to reason about.
         request.write_to(&mut stream, false, absolute_target)?;
-        let response = Response::read(stream, &method)?;
-        self.cookies
-            .lock()
-            .unwrap()
-            .store_response(&response.headers, &request.url);
-        Ok(response)
+        Response::read(stream, &method)
+    }
+
+    /// Windows goes through WinHTTP, which supplies the TLS stack, the system
+    /// certificate store and the system proxy configuration. Everything above
+    /// this call -- redirects, cookies, authentication, segmentation -- is the
+    /// same code on every platform.
+    #[cfg(windows)]
+    fn execute_transport(&self, request: &mut Request) -> io::Result<Response> {
+        use crate::winhttp::{self, WinHttpConfig};
+
+        // Apply the same default headers the socket path would.
+        request.prepare_headers();
+
+        let proxy = self
+            .config
+            .proxy
+            .as_ref()
+            .filter(|p| !p.bypasses(&request.url.host));
+        let config = WinHttpConfig {
+            insecure: self.config.tls_insecure,
+            proxy: proxy.map(|p| format!("{}:{}", p.host, p.port)),
+            proxy_bypass: proxy
+                .filter(|p| !p.bypass.is_empty())
+                .map(|p| p.bypass.join(";")),
+            connect_timeout: Some(self.config.timeouts.connect),
+            read_timeout: Some(self.config.timeouts.read),
+        };
+        Ok(Response::from_winhttp(winhttp::execute(request, &config)?))
     }
 
     /// Sends a request, following redirects and answering authentication

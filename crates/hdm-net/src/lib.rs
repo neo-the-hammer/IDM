@@ -11,6 +11,7 @@ pub mod punycode;
 pub mod stream;
 pub mod tls;
 pub mod url;
+pub mod winhttp;
 
 pub use client::{Client, ClientConfig, Fetch};
 pub use headers::Headers;

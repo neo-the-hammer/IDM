@@ -2,6 +2,7 @@
 
 pub mod category;
 pub mod engine;
+pub mod manager;
 pub mod platform;
 pub mod probe;
 pub mod resume;

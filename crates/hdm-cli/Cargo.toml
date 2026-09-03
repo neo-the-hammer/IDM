@@ -16,3 +16,4 @@ path = "src/main.rs"
 hdm-json = { path = "../hdm-json" }
 hdm-crypto = { path = "../hdm-crypto" }
 hdm-net = { path = "../hdm-net" }
+hdm-core = { path = "../hdm-core" }

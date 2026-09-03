@@ -565,6 +565,7 @@ fn effective_connections(spec: &DownloadSpec, info: &Probe) -> u8 {
 
 fn build_client(spec: &DownloadSpec) -> io::Result<Client> {
     let mut config = ClientConfig::new();
+    config.tls_insecure = spec.tls_insecure;
     #[cfg(unix)]
     {
         config.tls.insecure = spec.tls_insecure;

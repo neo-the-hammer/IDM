@@ -27,6 +27,12 @@ struct Bucket {
 pub struct Throttle {
     bucket: Mutex<Bucket>,
     wakeup: Condvar,
+    /// An enclosing limit, if any.
+    ///
+    /// Downloads have their own cap and also share a global one, so a
+    /// per-download limiter carries the global limiter as its parent and a
+    /// read has to satisfy both.
+    parent: Option<std::sync::Arc<Throttle>>,
 }
 
 impl Throttle {
@@ -41,7 +47,15 @@ impl Throttle {
                 closed: false,
             }),
             wakeup: Condvar::new(),
+            parent: None,
         }
+    }
+
+    /// Creates a limiter subordinate to `parent`.
+    pub fn with_parent(rate: u64, parent: std::sync::Arc<Throttle>) -> Throttle {
+        let mut throttle = Throttle::new(rate);
+        throttle.parent = Some(parent);
+        throttle
     }
 
     pub fn unlimited() -> Throttle {
@@ -84,6 +98,17 @@ impl Throttle {
         if wanted == 0 {
             return 0;
         }
+        let granted = self.take_local(wanted);
+        // Then satisfy the enclosing limit. If the parent grants less, the
+        // difference is simply not used; erring on the low side keeps the
+        // global cap honest, which is the one users notice.
+        match &self.parent {
+            Some(parent) => parent.take(granted),
+            None => granted,
+        }
+    }
+
+    fn take_local(&self, wanted: usize) -> usize {
         let mut bucket = self.bucket.lock().unwrap();
         loop {
             if bucket.closed {
