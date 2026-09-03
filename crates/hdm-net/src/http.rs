@@ -241,6 +241,11 @@ impl Response {
     pub fn shutdown(&self) {
         self.body.reader.get_ref().shutdown();
     }
+
+    /// A handle for closing this response's connection from another thread.
+    pub fn shutdown_handle(&self) -> io::Result<crate::stream::ShutdownHandle> {
+        self.body.reader.get_ref().shutdown_handle()
+    }
 }
 
 /// How the end of the body is determined.

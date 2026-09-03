@@ -27,6 +27,7 @@ dependencies = [
  "hdm-crypto",
  "hdm-json",
  "hdm-net",
+ "hdm-testserver",
 ]
 
 [[package]]

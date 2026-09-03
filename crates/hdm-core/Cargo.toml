@@ -12,3 +12,6 @@ authors.workspace = true
 hdm-json = { path = "../hdm-json" }
 hdm-crypto = { path = "../hdm-crypto" }
 hdm-net = { path = "../hdm-net" }
+
+[dev-dependencies]
+hdm-testserver = { path = "../hdm-testserver" }

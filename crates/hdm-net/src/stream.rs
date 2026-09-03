@@ -136,6 +136,16 @@ impl Stream {
     pub fn shutdown(&self) {
         let _ = self.tcp().shutdown(std::net::Shutdown::Both);
     }
+
+    /// A handle that can close this connection from another thread.
+    ///
+    /// A segment thread blocked in `read` would otherwise not notice a pause
+    /// until its read timeout expired, which is far too long to leave a user
+    /// watching a button they already pressed. Shutting the socket down from
+    /// the outside makes the read return at once.
+    pub fn shutdown_handle(&self) -> io::Result<ShutdownHandle> {
+        Ok(ShutdownHandle(self.tcp().try_clone()?))
+    }
 }
 
 impl Read for Stream {
@@ -177,5 +187,16 @@ pub enum TlsContextRef {}
 impl TlsContextRef {
     pub fn connect(&self, _host: &str, _tcp: TcpStream) -> io::Result<Stream> {
         match *self {}
+    }
+}
+
+/// A cloneable handle for closing a connection from another thread.
+#[derive(Debug)]
+pub struct ShutdownHandle(TcpStream);
+
+impl ShutdownHandle {
+    /// Closes the connection, unblocking any thread reading from it.
+    pub fn shutdown(&self) {
+        let _ = self.0.shutdown(std::net::Shutdown::Both);
     }
 }

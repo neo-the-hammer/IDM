@@ -5,9 +5,9 @@ Hydra is built in milestones. Each one is independently useful and lands as its 
 | # | Milestone | Status |
 | --- | --- | --- |
 | M0 | Workspace scaffold, licenses, TLS spike | ✅ done |
-| M1 | `hdm-json` + `hdm-crypto` | ⏳ |
-| M2 | `hdm-net` — HTTP/1.1, TLS, FTP, auth, cookies, proxy | ⏳ |
-| M3 | `hdm-core` — segmented engine, resume, throttle, store | ⏳ |
+| M1 | `hdm-json` + `hdm-crypto` | ✅ done |
+| M2 | `hdm-net` — HTTP/1.1, TLS, FTP, auth, cookies, proxy | ✅ done |
+| M3 | `hdm-core` — segmented engine, resume, throttle, store | ✅ done |
 | M4 | WinHTTP transport, REST + WebSocket API, `hdmd`, `hdm` CLI | ⏳ |
 | M5 | Themed web UI (12 themes, en/fa, RTL) | ⏳ |
 | M6 | Queues, scheduler, post-download actions | ⏳ |
