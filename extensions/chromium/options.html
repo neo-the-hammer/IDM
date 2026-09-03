@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hydra — extension settings</title>
+    <link rel="stylesheet" href="popup.css" />
+    <style>
+      body { inline-size: auto; max-inline-size: 640px; padding: 24px; margin: 0 auto; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .lead { color: var(--dim); margin: 0 0 20px; }
+      fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 0 0 16px; }
+      legend { padding: 0 6px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; }
+      label.field { display: block; margin-block-end: 12px; }
+      label.field span { display: block; font-size: 12px; color: var(--dim); margin-block-end: 4px; }
+      input[type='text'], input[type='number'], input[type='password'] {
+        inline-size: 100%; padding: 7px 10px; border: 1px solid var(--border);
+        border-radius: 7px; background: #0a0c10; color: var(--text); font: inherit;
+      }
+      .hint { font-size: 11px; color: var(--dim); margin-block-start: 4px; }
+      #saved { color: var(--success); margin-inline-start: 10px; }
+      .status { padding: 10px 12px; border-radius: 8px; background: var(--surface);
+                border: 1px solid var(--border); margin-block-end: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>Hydra Download Manager</h1>
+    <p class="lead">Settings for the browser extension.</p>
+
+    <div class="status" id="status">Checking for a running Hydra…</div>
+
+    <fieldset>
+      <legend>Capture</legend>
+      <label class="switch" style="margin-block-end: 12px">
+        <input type="checkbox" id="captureEnabled" />
+        <span>Take over downloads this browser starts</span>
+      </label>
+      <label class="switch" style="margin-block-end: 12px">
+        <input type="checkbox" id="sniffMedia" />
+        <span>Notice video and audio on pages, and offer it in the popup</span>
+      </label>
+      <label class="field">
+        <span>Smallest file to capture, in bytes</span>
+        <input type="number" id="minimumSize" min="0" step="1024" />
+        <div class="hint">0 captures everything. 1048576 captures files of 1 MiB and up.</div>
+      </label>
+      <label class="field">
+        <span>Connections per download</span>
+        <input type="number" id="connections" min="0" max="32" />
+        <div class="hint">0 uses whatever Hydra is configured to use.</div>
+      </label>
+      <label class="field">
+        <span>Only capture these extensions</span>
+        <input type="text" id="includedExtensions" placeholder="iso, zip, mkv — empty means all" />
+      </label>
+      <label class="field">
+        <span>Never capture these extensions</span>
+        <input type="text" id="excludedExtensions" placeholder="pdf, torrent" />
+      </label>
+      <label class="field">
+        <span>Never capture from these sites</span>
+        <input type="text" id="excludedHosts" placeholder="mail.example.com, intranet.local" />
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Pairing</legend>
+      <p class="hint" style="margin-block-start: 0">
+        Normally there is nothing to do here: the native messaging host finds
+        Hydra and its access token by itself. Fill these in only if that host is
+        not installed. The token is in <code>daemon.json</code> in Hydra's data
+        folder.
+      </p>
+      <label class="field">
+        <span>Hydra address</span>
+        <input type="text" id="manualUrl" placeholder="http://127.0.0.1:47113" />
+      </label>
+      <label class="field">
+        <span>Access token</span>
+        <input type="password" id="manualToken" autocomplete="off" />
+      </label>
+    </fieldset>
+
+    <button class="btn primary" id="save">Save</button>
+    <span id="saved" hidden>Saved</span>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

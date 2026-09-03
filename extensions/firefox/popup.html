@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hydra</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span class="brand">Hydra</span>
+      <span class="state" id="state">Checking…</span>
+    </header>
+
+    <section id="stats" hidden>
+      <div><strong id="stat-active">0</strong><span>active</span></div>
+      <div><strong id="stat-speed">—</strong><span>speed</span></div>
+      <div><strong id="stat-total">0</strong><span>total</span></div>
+    </section>
+
+    <section id="disconnected" hidden>
+      <p>
+        Hydra is not reachable. Start the <code>hdmd</code> daemon, or pair the
+        extension by hand.
+      </p>
+      <button class="btn" id="retry">Try again</button>
+      <button class="btn" id="pair">Pairing settings</button>
+    </section>
+
+    <section id="capture-row">
+      <label class="switch">
+        <input type="checkbox" id="capture" />
+        <span>Capture downloads from this browser</span>
+      </label>
+    </section>
+
+    <section id="media-section" hidden>
+      <h2>Media on this page</h2>
+      <ul id="media"></ul>
+    </section>
+
+    <footer>
+      <button class="btn primary" id="open">Open Hydra</button>
+      <button class="btn" id="options">Settings</button>
+    </footer>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

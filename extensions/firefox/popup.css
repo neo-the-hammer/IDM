@@ -1,0 +1,118 @@
+/* The popup borrows Hydra's dark palette so the two feel like one product. */
+:root {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --surface: #1b1f28;
+  --border: #262b36;
+  --text: #e6e9ef;
+  --dim: #9aa3b2;
+  --accent: #5b8cff;
+  --success: #3ecf8e;
+  --danger: #f2555a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  inline-size: 320px;
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: 10px;
+}
+
+.brand { font-weight: 650; }
+
+.state { font-size: 11px; color: var(--dim); }
+.state.ok { color: var(--success); }
+.state.bad { color: var(--danger); }
+
+#stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-block-end: 10px;
+}
+
+#stats div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+#stats strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+#stats span { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+
+#disconnected p { margin: 0 0 8px; color: var(--dim); }
+code { background: var(--surface); padding: 1px 4px; border-radius: 4px; }
+
+section { margin-block-end: 10px; }
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dim);
+}
+
+ul { list-style: none; margin: 0; padding: 0; max-block-size: 190px; overflow-y: auto; }
+
+li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  margin-block-end: 5px;
+}
+
+li .name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: ltr;
+}
+
+li .tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  flex: none;
+}
+
+.btn {
+  padding: 6px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+footer { display: flex; gap: 8px; }
+footer .btn { flex: 1; }
+
+.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.switch input { accent-color: var(--accent); inline-size: 15px; block-size: 15px; }
