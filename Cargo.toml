@@ -4,6 +4,7 @@ members = [
     "crates/hdm-json",
     "crates/hdm-crypto",
     "crates/hdm-net",
+    "crates/hdm-testserver",
     "crates/hdm-core",
     "crates/hdm-api",
     "crates/hdm-daemon",

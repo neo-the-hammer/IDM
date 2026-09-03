@@ -61,4 +61,9 @@ name = "hdm-net"
 version = "0.1.0"
 dependencies = [
  "hdm-crypto",
+ "hdm-testserver",
 ]
+
+[[package]]
+name = "hdm-testserver"
+version = "0.1.0"

@@ -10,3 +10,6 @@ authors.workspace = true
 
 [dependencies]
 hdm-crypto = { path = "../hdm-crypto" }
+
+[dev-dependencies]
+hdm-testserver = { path = "../hdm-testserver" }
