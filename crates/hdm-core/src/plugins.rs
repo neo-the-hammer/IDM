@@ -151,6 +151,34 @@ impl PluginHost {
         )?)
     }
 
+    /// Parses a streaming manifest whose kind is worked out from its bytes.
+    ///
+    /// The URL alone very often cannot say: signed CDN links carry no
+    /// extension and a generic `application/octet-stream`. The first line of
+    /// the file, on the other hand, is unambiguous.
+    pub fn manifest(&self, url: &str, text: &str) -> Result<Json, String> {
+        self.expect_ok(self.request(
+            json!({"action": "manifest", "url": url, "text": text}),
+            DEFAULT_TIMEOUT,
+        )?)
+    }
+
+    /// Parses an HLS playlist.
+    pub fn hls(&self, url: &str, text: &str) -> Result<Json, String> {
+        self.expect_ok(self.request(
+            json!({"action": "hls", "url": url, "text": text}),
+            DEFAULT_TIMEOUT,
+        )?)
+    }
+
+    /// Parses a DASH manifest.
+    pub fn dash(&self, url: &str, text: &str) -> Result<Json, String> {
+        self.expect_ok(self.request(
+            json!({"action": "dash", "url": url, "text": text}),
+            DEFAULT_TIMEOUT,
+        )?)
+    }
+
     /// Asks yt-dlp where a page's media actually lives.
     pub fn ytdlp(&self, url: &str) -> Result<Json, String> {
         self.expect_ok(self.request(

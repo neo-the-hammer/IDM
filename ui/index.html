@@ -33,6 +33,12 @@
           </svg>
           <span data-i18n="grab.title">Batch / site grabber</span>
         </button>
+        <button class="btn" id="media-button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="5" width="14" height="14" rx="2" /><path d="m22 8-6 4 6 4z" />
+          </svg>
+          <span data-i18n="media.title">Video and audio grabber</span>
+        </button>
         <input
           type="text"
           class="search"
@@ -259,6 +265,41 @@
       <footer>
         <button type="button" class="btn" data-close data-i18n="action.cancel">Cancel</button>
         <button type="button" class="btn primary" id="grab-add" disabled data-i18n="grab.add">Add selected</button>
+      </footer>
+    </dialog>
+
+    <!-- Video and audio grabber -->
+    <dialog id="media-dialog">
+      <header>
+        <h2 data-i18n="media.title">Video and audio grabber</h2>
+        <button type="button" class="btn ghost icon" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="content">
+        <div class="field">
+          <label for="media-url" data-i18n="media.url">Playlist or manifest</label>
+          <input type="text" id="media-url" placeholder="https://example.com/video/master.m3u8" dir="ltr" />
+          <span class="hint" data-i18n="media.urlHint">An .m3u8 (HLS) or .mpd (DASH) address. Streams are saved as one file.</span>
+        </div>
+
+        <div style="display: flex; gap: 8px; align-items: center">
+          <button type="button" class="btn primary" id="media-examine" data-i18n="media.examine">Examine</button>
+          <span id="media-status" class="hint"></span>
+        </div>
+
+        <div id="media-results" hidden>
+          <p id="media-summary" class="hint" style="margin: 0"></p>
+          <ul id="media-warnings" class="media-warnings"></ul>
+          <ul id="media-streams" class="grab-list"></ul>
+          <label class="switch">
+            <input type="checkbox" id="media-remux" />
+            <span data-i18n="media.remux">Convert to MP4 with ffmpeg</span>
+          </label>
+          <span class="hint" id="media-ffmpeg-note" hidden data-i18n="media.noFfmpeg">ffmpeg was not found, so this is unavailable.</span>
+        </div>
+      </div>
+      <footer>
+        <button type="button" class="btn" data-close data-i18n="action.cancel">Cancel</button>
+        <button type="button" class="btn primary" id="media-add" disabled data-i18n="media.download">Download</button>
       </footer>
     </dialog>
 

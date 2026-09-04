@@ -354,6 +354,8 @@ function wireChrome() {
     $('add-button').addEventListener('click', () => openAddDialog());
     $('grab-button').addEventListener('click', () => openGrabDialog());
     wireGrabDialog();
+    $('media-button').addEventListener('click', () => openMediaDialog());
+    wireMediaDialog();
     $('settings-button').addEventListener('click', () => openSettingsDialog());
     $('pause-all').addEventListener('click', () => api.pauseAll().catch(reportError));
     $('resume-all').addEventListener('click', () => api.resumeAll().catch(reportError));
@@ -701,6 +703,162 @@ function buildAccentPicker() {
         });
         return button;
     }));
+}
+// ------------------------------------------------- video and audio grabber
+/** The manifest last examined, so the chosen stream can be looked up by id. */
+let mediaProbe = null;
+function openMediaDialog() {
+    $('media-results').hidden = true;
+    $('media-add').disabled = true;
+    $('media-status').textContent = '';
+    mediaProbe = null;
+    $('media-dialog').showModal();
+    $('media-url').focus();
+}
+function wireMediaDialog() {
+    $('media-examine').addEventListener('click', examineMedia);
+    $('media-add').addEventListener('click', addChosenStream);
+    $('media-url').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            examineMedia();
+        }
+    });
+}
+async function examineMedia() {
+    const url = $('media-url').value.trim();
+    if (!url)
+        return;
+    const button = $('media-examine');
+    const status = $('media-status');
+    button.disabled = true;
+    status.textContent = t('media.examining');
+    $('media-results').hidden = true;
+    try {
+        mediaProbe = await api.probeMedia({ url });
+        status.textContent = '';
+        renderMediaStreams(mediaProbe);
+    }
+    catch (error) {
+        mediaProbe = null;
+        status.textContent = '';
+        reportError(error);
+    }
+    finally {
+        button.disabled = false;
+    }
+}
+function renderMediaStreams(probe) {
+    const list = $('media-streams');
+    const summary = [probe.format.toUpperCase()];
+    if (probe.duration > 0)
+        summary.push(duration(Math.round(probe.duration)));
+    if (probe.live)
+        summary.push(t('media.live'));
+    $('media-summary').textContent = summary.join(' · ');
+    $('media-warnings').replaceChildren(...probe.warnings.map((warning) => {
+        const item = document.createElement('li');
+        item.textContent = warning;
+        return item;
+    }));
+    // ffmpeg is what remuxing needs; offering the option without it would be a
+    // promise the daemon cannot keep.
+    const remux = $('media-remux');
+    remux.disabled = !probe.ffmpeg;
+    if (!probe.ffmpeg)
+        remux.checked = false;
+    $('media-ffmpeg-note').hidden = probe.ffmpeg;
+    if (probe.streams.length === 0) {
+        list.replaceChildren();
+        $('media-results').hidden = false;
+        $('media-summary').textContent = t('media.nothing');
+        $('media-add').disabled = true;
+        return;
+    }
+    const rows = [];
+    let lastKind = '';
+    probe.streams.forEach((stream, index) => {
+        // Group video and audio under headings: on a DASH manifest the two lists
+        // run together otherwise, and picking an audio track by mistake is easy.
+        if (stream.kind !== lastKind) {
+            lastKind = stream.kind;
+            const heading = document.createElement('li');
+            heading.className = 'group-heading';
+            heading.textContent = stream.kind === 'audio' ? t('media.audio') : t('media.video');
+            rows.push(heading);
+        }
+        const row = document.createElement('li');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        // Video and audio are chosen independently when the manifest keeps them
+        // apart, so they are separate radio groups.
+        radio.name = `media-${stream.kind}`;
+        radio.value = String(index);
+        radio.id = `media-stream-${index}`;
+        // The first of each kind is the best of it, and the sensible default.
+        radio.checked = probe.streams.findIndex((s) => s.kind === stream.kind) === index;
+        const label = document.createElement('label');
+        label.className = 'stream-label';
+        label.htmlFor = radio.id;
+        // With no resolution or bitrate to describe it, the daemon's label is just
+        // the kind — which is an untranslated English word, so say it properly.
+        label.textContent =
+            stream.label === stream.kind && (stream.kind === 'video' || stream.kind === 'audio')
+                ? t(`media.${stream.kind}`)
+                : stream.label;
+        const note = document.createElement('span');
+        note.className = 'stream-note';
+        const parts = [];
+        if (stream.segments > 0)
+            parts.push(t('media.segments', { n: stream.segments }));
+        if (stream.encrypted)
+            parts.push(t('media.encrypted'));
+        note.textContent = parts.join(' · ');
+        row.append(radio, label, note);
+        rows.push(row);
+    });
+    list.replaceChildren(...rows);
+    $('media-results').hidden = false;
+    $('media-add').disabled = false;
+}
+function chosenStream(kind) {
+    const selected = $('media-streams').querySelector(`input[name="media-${kind}"]:checked`);
+    return selected ? mediaProbe?.streams[Number(selected.value)] : undefined;
+}
+async function addChosenStream() {
+    const probe = mediaProbe;
+    const video = chosenStream('video') ?? chosenStream('audio');
+    if (!probe || !video)
+        return;
+    const request = {
+        url: video.url,
+        format: probe.format,
+        streamId: video.id,
+        remux: $('media-remux').checked,
+    };
+    // Only pair an audio track when the video genuinely lacks one; an HLS
+    // variant already carries its audio, and adding a second track there would
+    // duplicate it.
+    if (probe.separateAudio && video.kind === 'video') {
+        const audio = chosenStream('audio');
+        if (audio) {
+            request.audioUrl = audio.url;
+            request.audioStreamId = audio.id;
+        }
+    }
+    const button = $('media-add');
+    button.disabled = true;
+    try {
+        const created = await api.addMedia(request);
+        $('media-dialog').close();
+        toast(t('media.added', { name: created.filename || video.label }));
+    }
+    catch (error) {
+        reportError(error);
+    }
+    finally {
+        button.disabled = false;
+    }
 }
 // ---------------------------------------------------------------- feedback
 function toast(message, isError = false) {

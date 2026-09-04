@@ -31,9 +31,9 @@ const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(2);
 pub const MAX_CONNECTIONS: u8 = 32;
 
 // Control values.
-const CONTROL_RUN: u8 = 0;
-const CONTROL_PAUSE: u8 = 1;
-const CONTROL_CANCEL: u8 = 2;
+pub(crate) const CONTROL_RUN: u8 = 0;
+pub(crate) const CONTROL_PAUSE: u8 = 1;
+pub(crate) const CONTROL_CANCEL: u8 = 2;
 
 /// The lifecycle of a download.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +104,9 @@ pub struct DownloadSpec {
     pub proxy: Option<String>,
     /// Per-download speed cap in bytes per second; 0 means unlimited.
     pub speed_limit: u64,
+    /// Set when this "download" is a stream to be reassembled from segments
+    /// rather than a file to be fetched with byte ranges.
+    pub media: Option<crate::media::MediaSelection>,
 }
 
 impl DownloadSpec {
@@ -123,6 +126,7 @@ impl DownloadSpec {
             tls_insecure: false,
             proxy: None,
             speed_limit: 0,
+            media: None,
         }
     }
 
@@ -227,7 +231,7 @@ impl Shared {
         Status::from_code(self.status.load(Ordering::Acquire))
     }
 
-    fn set_status(&self, status: Status) {
+    pub(crate) fn set_status(&self, status: Status) {
         self.status.store(status.code(), Ordering::Release);
     }
 
@@ -299,11 +303,12 @@ impl Shared {
         self.interrupt_connections();
     }
 
-    fn control(&self) -> u8 {
+    pub(crate) fn control(&self) -> u8 {
         self.control.load(Ordering::Acquire)
     }
 
-    fn should_stop(&self) -> bool {
+    /// True once pause or cancel has been asked for.
+    pub fn should_stop(&self) -> bool {
         self.control() != CONTROL_RUN
     }
 
@@ -314,15 +319,32 @@ impl Shared {
         }
     }
 
-    fn register_connection(&self, handle: Arc<ShutdownHandle>) {
+    pub(crate) fn register_connection(&self, handle: Arc<ShutdownHandle>) {
         self.connections.lock().unwrap().push(handle);
     }
 
-    fn unregister_connection(&self, handle: &Arc<ShutdownHandle>) {
+    pub(crate) fn unregister_connection(&self, handle: &Arc<ShutdownHandle>) {
         self.connections
             .lock()
             .unwrap()
             .retain(|h| !Arc::ptr_eq(h, handle));
+    }
+
+    /// Sets the expected total. Zero means "still unknown".
+    pub(crate) fn set_total(&self, total: u64) {
+        self.total.store(total, Ordering::Release);
+    }
+
+    pub(crate) fn set_downloaded(&self, bytes: u64) {
+        self.downloaded.store(bytes, Ordering::Release);
+    }
+
+    pub(crate) fn set_speed(&self, bytes_per_second: u64) {
+        self.speed.store(bytes_per_second, Ordering::Release);
+    }
+
+    pub(crate) fn set_filename(&self, name: &str) {
+        *self.filename.lock().unwrap() = name.to_string();
     }
 
     fn recompute_downloaded(&self) {
@@ -351,7 +373,16 @@ pub fn run(
     shared: &Arc<Shared>,
     throttle: &Arc<Throttle>,
 ) -> io::Result<Outcome> {
-    match run_inner(spec, shared, throttle) {
+    settle(shared, run_inner(spec, shared, throttle))
+}
+
+/// Records how a transfer ended on its [`Shared`] state.
+///
+/// Both the byte-range engine and the media grabber end here, so a media
+/// download appears in the list, in the API and in the UI in exactly the same
+/// terms as any other.
+pub(crate) fn settle(shared: &Arc<Shared>, result: io::Result<Outcome>) -> io::Result<Outcome> {
+    match result {
         Ok(outcome) => {
             match &outcome {
                 Outcome::Completed { path, .. } => {
@@ -563,7 +594,7 @@ fn effective_connections(spec: &DownloadSpec, info: &Probe) -> u8 {
     spec.connections.clamp(1, MAX_CONNECTIONS)
 }
 
-fn build_client(spec: &DownloadSpec) -> io::Result<Client> {
+pub(crate) fn build_client(spec: &DownloadSpec) -> io::Result<Client> {
     let mut config = ClientConfig::new();
     config.tls_insecure = spec.tls_insecure;
     #[cfg(unix)]

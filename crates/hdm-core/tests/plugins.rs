@@ -143,6 +143,53 @@ fn yt_dlp_absence_is_reported_clearly() {
     assert!(error.contains("yt-dlp"), "got: {error}");
 }
 
+/// The manifest parsers are reachable through the same bridge as everything
+/// else, and refuse anything that is not a manifest instead of guessing.
+#[test]
+fn it_reads_both_kinds_of_streaming_manifest() {
+    let host = match PluginHost::discover() {
+        Ok(host) => host,
+        Err(reason) => {
+            eprintln!("skipped: {reason}");
+            return;
+        }
+    };
+
+    let playlist = "#EXTM3U\n#EXT-X-TARGETDURATION:4\n\
+                    #EXTINF:4.0,\na.ts\n#EXTINF:4.0,\nb.ts\n#EXT-X-ENDLIST\n";
+    let hls = host
+        .manifest("https://x.example.com/v/i.m3u8", playlist)
+        .unwrap();
+    assert_eq!(hls.str_or("kind", ""), "media");
+    assert_eq!(hls.u64_or("count", 0), 2);
+    assert!(!hls.bool_or("live", true));
+
+    let mpd = r#"<?xml version="1.0"?>
+        <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static"
+             mediaPresentationDuration="PT8S">
+          <Period><AdaptationSet contentType="video" mimeType="video/mp4">
+            <Representation id="v0" bandwidth="900000" width="1280" height="720">
+              <BaseURL>f.mp4</BaseURL>
+            </Representation>
+          </AdaptationSet></Period>
+        </MPD>"#;
+    let dash = host.manifest("https://x.example.com/v/s.mpd", mpd).unwrap();
+    assert_eq!(dash.str_or("kind", ""), "dash");
+    let streams = dash.get("streams").and_then(Json::as_arr).unwrap();
+    assert_eq!(streams.len(), 1);
+    assert_eq!(streams[0].u64_or("height", 0), 720);
+
+    // The kind is decided from the bytes, so anything else has to be refused
+    // rather than parsed as whichever was guessed.
+    let error = host
+        .manifest(
+            "https://x.example.com/v/page",
+            "<html>not a manifest</html>",
+        )
+        .unwrap_err();
+    assert!(error.contains("HLS") && error.contains("DASH"), "{error}");
+}
+
 #[test]
 fn status_describes_the_plugin_layer() {
     let value = status();

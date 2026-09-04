@@ -39,6 +39,7 @@ fn main() {
         Some("remove") | Some("rm") => command_remove(&args[1..]),
         Some("batch") => command_batch(&args[1..]),
         Some("grab") => command_grab(&args[1..]),
+        Some("media") => command_media(&args[1..]),
         Some("plugins") => command_plugins(),
         Some("settings") => command_settings(&args[1..]),
         Some("status") => command_status(),
@@ -439,6 +440,115 @@ fn command_grab(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Lists what a streaming manifest offers, and optionally downloads it.
+///
+/// Listing first is deliberate. A manifest normally offers half a dozen
+/// qualities and there is no sensible way to guess which one someone wants
+/// before they have seen them.
+fn command_media(args: &[String]) -> Result<(), String> {
+    let mut options = AddOptions::parse_with(
+        args,
+        &["--add", "--remux"],
+        &["--stream", "--audio", "--queue"],
+    )?;
+    let url = options
+        .url
+        .take()
+        .ok_or("`hdm media` needs the URL of an .m3u8 or .mpd")?;
+    let add = args.iter().any(|a| a == "--add");
+    let remux = args.iter().any(|a| a == "--remux");
+    let stream = value_after(args, &["--stream"]);
+    let daemon = Daemon::connect()?;
+
+    let mut body = json!({ "url": (url.as_str()) });
+    if let Some(directory) = &options.directory {
+        body.insert(
+            "directory",
+            Json::Str(directory.to_string_lossy().into_owned()),
+        );
+    }
+    if let Some(filename) = &options.filename {
+        body.insert("filename", Json::Str(filename.clone()));
+    }
+    if let Some(connections) = options.connections {
+        body.insert("connections", Json::from(connections));
+    }
+    if let Some(limit) = options.speed_limit {
+        body.insert("speedLimit", Json::from(limit));
+    }
+
+    let probe = daemon.request("POST", "/api/v1/media/probe", Some(body.clone()))?;
+    let format = probe.str_or("format", "?");
+    let streams = probe.get("streams").and_then(Json::as_arr).unwrap_or(&[]);
+
+    println!(
+        "{} — {} stream{}, {}{}",
+        format.to_uppercase(),
+        streams.len(),
+        if streams.len() == 1 { "" } else { "s" },
+        match probe.get("duration").and_then(Json::as_f64).unwrap_or(0.0) {
+            d if d <= 0.0 => "duration unknown".to_string(),
+            d => format_duration(d.round() as u64),
+        },
+        if probe.bool_or("live", false) {
+            " (live)"
+        } else {
+            ""
+        }
+    );
+    println!();
+    println!("{:<8} {:<6} {:>9}  DESCRIPTION", "ID", "KIND", "SEGMENTS");
+    for entry in streams {
+        let segments = entry.u64_or("segments", 0);
+        println!(
+            "{:<8} {:<6} {:>9}  {}{}",
+            entry.str_or("id", "?"),
+            entry.str_or("kind", "?"),
+            if segments == 0 {
+                "-".to_string()
+            } else {
+                segments.to_string()
+            },
+            entry.str_or("label", ""),
+            if entry.bool_or("encrypted", false) {
+                "  [encrypted]"
+            } else {
+                ""
+            }
+        );
+    }
+    for warning in probe.get("warnings").and_then(Json::as_arr).unwrap_or(&[]) {
+        eprintln!("\n  ! {}", warning.as_str().unwrap_or(""));
+    }
+    if probe.bool_or("separateAudio", false) && !probe.bool_or("ffmpeg", false) {
+        eprintln!("\n  ! ffmpeg was not found, so video and audio will be saved separately.");
+    }
+
+    if !add {
+        eprintln!("\nRe-run with --add, optionally with --stream <ID>, to download.");
+        return Ok(());
+    }
+
+    if let Some(stream) = stream {
+        body.insert("streamId", Json::Str(stream));
+        body.insert("format", Json::Str(format.to_string()));
+        if let Some(audio) = value_after(args, &["--audio"]) {
+            body.insert("audioStreamId", Json::Str(audio));
+            body.insert("audioUrl", Json::Str(probe.str_or("url", "").to_string()));
+        }
+    }
+    body.insert("remux", Json::Bool(remux));
+    body.insert("autostart", Json::Bool(!options.paused));
+
+    let created = daemon.request("POST", "/api/v1/media/download", Some(body))?;
+    println!(
+        "\n{}  {}",
+        created.str_or("id", "?"),
+        created.str_or("filename", url.as_str())
+    );
+    Ok(())
+}
+
 /// Reports whether the Python extraction plugins are usable.
 fn command_plugins() -> Result<(), String> {
     let status = hdm_core::plugins::status();
@@ -583,6 +693,20 @@ struct AddOptions {
 
 impl AddOptions {
     fn parse(args: &[String]) -> Result<AddOptions, String> {
+        AddOptions::parse_with(args, &[], &[])
+    }
+
+    /// Parses the shared download options, ignoring flags belonging to the
+    /// command itself.
+    ///
+    /// A command that layers its own flags on top still has to reject a
+    /// genuine typo, so it declares what it accepts rather than the parser
+    /// waving through anything it does not recognise.
+    fn parse_with(
+        args: &[String],
+        own_flags: &[&str],
+        own_values: &[&str],
+    ) -> Result<AddOptions, String> {
         let mut options = AddOptions::default();
         let mut index = 0;
         while index < args.len() {
@@ -633,6 +757,10 @@ impl AddOptions {
                 "--paused" => options.paused = true,
                 "--overwrite" => options.overwrite = true,
                 "--json" => {}
+                other if own_values.contains(&other) => {
+                    let _ = take_value(&mut index)?;
+                }
+                other if own_flags.contains(&other) => {}
                 other if other.starts_with('-') => return Err(format!("unknown option `{other}`")),
                 other => options.url = Some(other.to_string()),
             }
@@ -775,6 +903,7 @@ COMMANDS:
     restart <ID>       Start a download again from the beginning
     remove <ID>        Remove from the list (--delete-files to erase it too)
     settings           Show settings, or change them with --key value
+    media <URL>        List what an .m3u8 or .mpd offers (--add to download)
 
 DOWNLOAD OPTIONS:
     -o, --output <NAME>       Save under this filename
@@ -802,10 +931,17 @@ BATCH AND SITE GRABBER OPTIONS:
         --ignore-robots       Do not honour robots.txt (grab)
         --queue <NAME>        Put the results in this queue
 
+MEDIA GRABBER OPTIONS:
+        --stream <ID>         Download this stream rather than the best one
+        --audio <ID>          Pair this audio track with it
+        --remux               Convert to MP4 with ffmpeg, when it is installed
+
 EXAMPLES:
     hdm get https://example.com/ubuntu.iso -n 16
     hdm batch 'https://example.com/photo[001-250].jpg' --add
     hdm grab https://example.com/docs/ --depth 2 --include pdf,zip --add
+    hdm media https://example.com/video/master.m3u8
+    hdm media https://example.com/video/master.m3u8 --add --stream v0 --remux
     hdm add https://example.com/f.zip --limit 2M
     hdm settings --speed-limit 500k
     hdm pause --all"

@@ -223,9 +223,11 @@ impl Manager {
             // The partial file and its sidecar go too, or a later download of
             // the same URL would silently resume into the deleted one.
             if !record.filename.is_empty() {
-                let part = part_path_for(&record.spec.directory.join(&record.filename));
+                let target = record.spec.directory.join(&record.filename);
+                let part = part_path_for(&target);
                 let _ = std::fs::remove_file(&part);
                 let _ = std::fs::remove_file(sidecar_path_for(&part));
+                crate::media::discard_partial(&target);
             }
         }
         let _ = state.store.save();
@@ -245,9 +247,11 @@ impl Manager {
             .store
             .get_mut(id)
             .ok_or_else(|| format!("no download {id}"))?;
-        let part = part_path_for(&record.spec.directory.join(&record.filename));
+        let target = record.spec.directory.join(&record.filename);
+        let part = part_path_for(&target);
         let _ = std::fs::remove_file(&part);
         let _ = std::fs::remove_file(sidecar_path_for(&part));
+        crate::media::discard_partial(&target);
         record.downloaded = 0;
         record.error = None;
         record.status = Status::Queued;
@@ -657,7 +661,13 @@ impl Manager {
                 std::thread::Builder::new()
                     .name(format!("hydra-dl-{id}"))
                     .spawn(move || {
-                        let _ = engine::run(&spec, &shared, &throttle);
+                        // One seam, one decision: a stream is reassembled from
+                        // its segments, anything else is fetched with ranges.
+                        let _ = if spec.media.is_some() {
+                            crate::media::run(&spec, &shared, &throttle)
+                        } else {
+                            engine::run(&spec, &shared, &throttle)
+                        };
                     })
                     .expect("cannot spawn a download thread")
             };

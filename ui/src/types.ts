@@ -130,3 +130,38 @@ export interface PluginStatus {
     ytdlp: { available: boolean; version?: string; reason?: string };
   };
 }
+
+/** One quality a streaming manifest offers. */
+export interface MediaStream {
+  id: string;
+  /** The playlist this stream is downloaded from. */
+  url: string;
+  /** `video`, `audio` or `text`. */
+  kind: string;
+  /** A ready-made description such as `1080p · 4.2 Mbit/s`. */
+  label: string;
+  width: number | null;
+  height: number | null;
+  bandwidth: number | null;
+  codecs: string;
+  language: string;
+  /** Zero when the segment list has not been fetched yet. */
+  segments: number;
+  encrypted: boolean;
+}
+
+/** What a manifest turned out to contain. */
+export interface MediaProbe {
+  url: string;
+  /** `hls` or `dash`. */
+  format: string;
+  live: boolean;
+  /** Seconds; zero when the manifest does not say. */
+  duration: number;
+  streams: MediaStream[];
+  /** True when video and audio are separate and both are needed. */
+  separateAudio: boolean;
+  warnings: string[];
+  /** Whether the daemon found ffmpeg, which combining and remuxing need. */
+  ffmpeg: boolean;
+}

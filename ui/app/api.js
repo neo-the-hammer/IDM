@@ -86,6 +86,12 @@ export class Api {
     crawl(request) {
         return this.call('POST', '/crawl', request);
     }
+    probeMedia(request) {
+        return this.call('POST', '/media/probe', request);
+    }
+    addMedia(request) {
+        return this.call('POST', '/media/download', request);
+    }
     addBatch(request) {
         return this.call('POST', '/downloads-batch', request);
     }

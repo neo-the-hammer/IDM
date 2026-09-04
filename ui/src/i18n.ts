@@ -130,6 +130,24 @@ const EN: Strings = {
   'grab.nothing': 'Nothing found.',
   'grab.added': 'Added {n} downloads',
   'grab.needsPython': 'The site grabber needs Python 3. Batch patterns work without it.',
+
+  'media.title': 'Video and audio grabber',
+  'media.url': 'Playlist or manifest',
+  'media.urlHint': 'An .m3u8 (HLS) or .mpd (DASH) address. Streams are saved as one file.',
+  'media.examine': 'Examine',
+  'media.examining': 'Reading the manifest…',
+  'media.video': 'Video',
+  'media.audio': 'Audio',
+  'media.segments': '{n} segments',
+  'media.segmentsUnknown': 'segment count not yet known',
+  'media.encrypted': 'encrypted',
+  'media.live': 'live stream',
+  'media.remux': 'Convert to MP4 with ffmpeg',
+  'media.noFfmpeg': 'ffmpeg was not found, so this is unavailable.',
+  'media.download': 'Download',
+  'media.nothing': 'That address offers nothing to download.',
+  'media.needsPython': 'The video grabber needs Python 3 to read manifests.',
+  'media.added': 'Added {name}',
 };
 
 const FA: Strings = {
@@ -252,6 +270,24 @@ const FA: Strings = {
   'grab.nothing': 'چیزی یافت نشد.',
   'grab.added': '{n} دانلود افزوده شد',
   'grab.needsPython': 'خزنده سایت به پایتون ۳ نیاز دارد. الگوهای دسته‌ای بدون آن کار می‌کنند.',
+
+  'media.title': 'گیرنده ویدیو و صدا',
+  'media.url': 'پلی‌لیست یا مانیفست',
+  'media.urlHint': 'نشانی یک ‎.m3u8‎ (HLS) یا ‎.mpd‎ (DASH). جریان‌ها در یک فایل ذخیره می‌شوند.',
+  'media.examine': 'بررسی',
+  'media.examining': 'در حال خواندن مانیفست…',
+  'media.video': 'ویدیو',
+  'media.audio': 'صدا',
+  'media.segments': '{n} قطعه',
+  'media.segmentsUnknown': 'تعداد قطعه‌ها هنوز مشخص نیست',
+  'media.encrypted': 'رمزگذاری‌شده',
+  'media.live': 'پخش زنده',
+  'media.remux': 'تبدیل به MP4 با ffmpeg',
+  'media.noFfmpeg': 'ffmpeg پیدا نشد، پس این گزینه در دسترس نیست.',
+  'media.download': 'دانلود',
+  'media.nothing': 'این نشانی چیزی برای دانلود ندارد.',
+  'media.needsPython': 'گیرنده ویدیو برای خواندن مانیفست به پایتون ۳ نیاز دارد.',
+  'media.added': '{name} افزوده شد',
 };
 
 const CATALOGUE: Record<Locale, Strings> = { en: EN, fa: FA };

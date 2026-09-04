@@ -10,6 +10,7 @@
 import type {
   CrawlResult,
   Download,
+  MediaProbe,
   PluginStatus,
   Queue,
   Settings,
@@ -114,6 +115,14 @@ export class Api {
 
   crawl(request: Record<string, unknown>): Promise<CrawlResult> {
     return this.call('POST', '/crawl', request);
+  }
+
+  probeMedia(request: Record<string, unknown>): Promise<MediaProbe> {
+    return this.call('POST', '/media/probe', request);
+  }
+
+  addMedia(request: Record<string, unknown>): Promise<Download> {
+    return this.call('POST', '/media/download', request);
   }
 
   addBatch(request: Record<string, unknown>): Promise<{ added: number; rejected: string[] }> {

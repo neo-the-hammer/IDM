@@ -118,6 +118,9 @@ function extensionOf(name) {
   return extension.length <= 6 ? extension : '';
 }
 
+/** A URL that indexes media rather than being it. */
+const MANIFEST_URL = /\.(m3u8|mpd)(\?|#|$)/i;
+
 // ------------------------------------------------------------ context menus
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -155,6 +158,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       referer: info.pageUrl || tab?.url,
       cookies: (await cookieHeaderFor(url)) || undefined,
       connections: settings.connections || undefined,
+      // A right-click on a <video> whose source is a playlist has to go to the
+      // media route, or the "video" that arrives is a text file.
+      streaming: MANIFEST_URL.test(url),
     });
     notify('Sent to Hydra', decodeURIComponent(url.split('/').pop() ?? url));
     await updateBadge();

@@ -46,6 +46,10 @@ const args = process.argv.slice(2);
 const base = args.find((a) => !a.startsWith('--')) ?? 'http://127.0.0.1:47113';
 const outIndex = args.indexOf('--out');
 const outDir = outIndex >= 0 ? args[outIndex + 1] : 'docs/screenshots';
+// An .m3u8 or .mpd to show the video grabber with something in it. Without one
+// the dialog is still captured, just empty.
+const manifestIndex = args.indexOf('--manifest');
+const manifest = manifestIndex >= 0 ? args[manifestIndex + 1] : '';
 
 const THEMES = [
   'hydra-dark', 'hydra-light', 'amoled', 'nord', 'dracula', 'catppuccin-mocha',
@@ -121,6 +125,21 @@ await page.waitForTimeout(400);
 await page.click('details.advanced summary');
 await page.waitForTimeout(300);
 await page.screenshot({ path: path.join(outDir, 'add-download.png') });
+await page.keyboard.press('Escape');
+
+// The video grabber, examining a real manifest when one was given.
+await page.waitForTimeout(300);
+await page.click('#media-button');
+await page.waitForTimeout(300);
+if (manifest) {
+  await page.fill('#media-url', manifest);
+  await page.click('#media-examine');
+  await page
+    .waitForSelector('#media-results:not([hidden])', { timeout: 15000 })
+    .catch(() => console.log('info  the manifest could not be read; showing the empty dialog'));
+  await page.waitForTimeout(300);
+}
+await page.screenshot({ path: path.join(outDir, 'video-grabber.png') });
 await page.keyboard.press('Escape');
 
 await browser.close();

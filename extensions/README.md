@@ -52,8 +52,11 @@ it straight to Hydra.
 
 **Media sniffing.** Responses with a video or audio content type are noted per
 tab and offered in the popup. Streaming manifests (HLS, DASH) are labelled as
-such rather than presented as ordinary files, because segmented media needs the
-media grabber rather than a plain transfer.
+such rather than presented as ordinary files, and pressing *Get* on one sends it
+to the daemon's media grabber (`/api/v1/media/download`) rather than the plain
+download route — which would otherwise save a few kilobytes of playlist text
+under the video's name. The same applies to a right-click on a `<video>` whose
+source is an `.m3u8` or `.mpd`.
 
 **Filters.** Capture can be limited by file extension, by minimum size, or
 turned off for particular sites — and page types the browser handles inline

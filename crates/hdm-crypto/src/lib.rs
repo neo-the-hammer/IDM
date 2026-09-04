@@ -15,6 +15,7 @@
 //! );
 //! ```
 
+mod aes;
 mod base64;
 mod block;
 mod hmac;
@@ -23,6 +24,7 @@ mod rand;
 mod sha1;
 mod sha256;
 
+pub use aes::{cbc_decrypt, cbc_decrypt_raw, cbc_encrypt, Aes, BLOCK as AES_BLOCK};
 pub use base64::{decode as base64_decode, encode as base64_encode, encode_url_safe};
 pub use hmac::hmac;
 pub use md5::Md5;

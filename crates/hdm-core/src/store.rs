@@ -171,7 +171,8 @@ pub fn spec_to_json(spec: &DownloadSpec) -> Json {
         "maxRetries": (spec.max_retries),
         "tlsInsecure": (spec.tls_insecure),
         "proxy": (spec.proxy.clone()),
-        "speedLimit": (spec.speed_limit)
+        "speedLimit": (spec.speed_limit),
+        "media": (spec.media.as_ref().map(|m| m.to_json()))
     })
 }
 
@@ -236,6 +237,9 @@ pub fn spec_from_json(value: &Json) -> Option<DownloadSpec> {
             .and_then(Json::as_str)
             .map(str::to_string),
         speed_limit: value.u64_or("speedLimit", 0),
+        media: value
+            .get("media")
+            .and_then(crate::media::MediaSelection::from_json),
     })
 }
 

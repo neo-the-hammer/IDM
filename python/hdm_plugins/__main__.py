@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 
-from . import __version__, links, media, protocol, ytdlp
+from . import __version__, dash, hls, links, media, protocol, ytdlp
 
 
 def handle_capabilities(_request: dict) -> dict:
@@ -56,12 +56,56 @@ def handle_ytdlp(request: dict) -> dict:
     return protocol.ok(**result)
 
 
+def handle_hls(request: dict) -> dict:
+    text = request.get("text")
+    url = request.get("url")
+    if not isinstance(text, str) or not isinstance(url, str):
+        return protocol.error("`text` and `url` are required")
+    if len(text) > hls.MAX_MANIFEST_BYTES:
+        return protocol.error("the playlist is too large to be a playlist")
+    parsed = hls.parse(text, url)
+    if parsed.get("kind") == "invalid":
+        return protocol.error(parsed.get("error", "not an HLS playlist"))
+    return protocol.ok(**parsed)
+
+
+def handle_dash(request: dict) -> dict:
+    text = request.get("text")
+    url = request.get("url")
+    if not isinstance(text, str) or not isinstance(url, str):
+        return protocol.error("`text` and `url` are required")
+    parsed = dash.parse(text, url)
+    if parsed.get("kind") == "invalid":
+        return protocol.error(parsed.get("error", "not a DASH manifest"))
+    return protocol.ok(**parsed)
+
+
+def handle_manifest(request: dict) -> dict:
+    """Parses a manifest without being told which kind it is.
+
+    The daemon usually cannot tell from the URL: plenty of streams are served
+    from an extensionless path with a generic content type. The bytes,
+    however, are unambiguous.
+    """
+    text = request.get("text")
+    if not isinstance(text, str):
+        return protocol.error("`text` is required")
+    if "#EXTM3U" in text[:200]:
+        return handle_hls(request)
+    if "<MPD" in text[:4096]:
+        return handle_dash(request)
+    return protocol.error("this is neither an HLS playlist nor a DASH manifest")
+
+
 HANDLERS = {
     "ping": handle_ping,
     "capabilities": handle_capabilities,
     "links": handle_links,
     "media": handle_media,
     "ytdlp": handle_ytdlp,
+    "hls": handle_hls,
+    "dash": handle_dash,
+    "manifest": handle_manifest,
 }
 
 

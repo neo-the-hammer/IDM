@@ -170,6 +170,74 @@ refused: that is far more likely to be a typo than an intention.
 
 The site grabber needs Python 3. Batch patterns, and everything else, do not.
 
+## The media grabber
+
+| Method | Path | Does |
+| --- | --- | --- |
+| `POST` | `/api/v1/media/probe` | Read a manifest and report what it offers |
+| `POST` | `/api/v1/media/download` | Add a stream as a download |
+
+An `.m3u8` or `.mpd` is an *index* of segments, not the media itself. Passing
+one to `/api/v1/downloads` saves a few kilobytes of text under a film's name;
+these two routes exist so that does not happen.
+
+```jsonc
+// POST /api/v1/media/probe
+{ "url": "https://example.com/video/master.m3u8" }
+// →
+{
+  "url": "https://example.com/video/master.m3u8",
+  "format": "hls",              // or "dash"
+  "live": false,
+  "duration": 1873.2,           // seconds; 0 when the manifest does not say
+  "separateAudio": false,       // true when audio must be chosen as well
+  "ffmpeg": true,               // whether the daemon found ffmpeg
+  "streams": [
+    {
+      "id": "v0",
+      "url": "https://example.com/video/1080.m3u8",
+      "kind": "video",          // "video", "audio" or "text"
+      "label": "1080p · 5.0 Mbit/s · avc1.640028",
+      "width": 1920, "height": 1080, "bandwidth": 5000000,
+      "codecs": "avc1.640028", "language": "",
+      "segments": 0,            // 0 until the variant playlist is fetched
+      "encrypted": false
+    }
+  ],
+  "warnings": []                // DRM, live streams, missing ffmpeg
+}
+```
+
+`POST /api/v1/media/download` takes every option `/api/v1/downloads` takes —
+`directory`, `filename`, `connections`, `speedLimit`, `headers`, `cookies`,
+`referer`, `proxy`, credentials — plus:
+
+```jsonc
+{
+  "url": "https://example.com/video/1080.m3u8",
+  "format": "hls",              // required alongside streamId
+  "streamId": "v0",
+  "audioUrl": null,             // for DASH, where audio is a separate stream
+  "audioStreamId": null,
+  "remux": false                // convert to MP4 with ffmpeg
+}
+```
+
+With no `streamId`, the manifest is probed and the best video is taken — along
+with an audio track when the manifest keeps them apart. The response is a
+download record like any other, so progress, pause, resume and cancel all work
+through the usual routes.
+
+What happens then: segments are fetched in parallel (up to `connections`, capped
+at 16), `AES-128` segments are decrypted, and the result is concatenated in
+playlist order. A paused media download keeps its fetched segments and resumes
+into them. MPEG-TS is saved as `.ts` and fragmented MP4 as `.mp4`; `remux`
+converts either to MP4, and combining a separate audio track always needs
+ffmpeg. Without ffmpeg the two tracks are saved side by side as
+`name.video.mp4` and `name.audio.mp4` rather than the audio being dropped.
+
+Like the site grabber, this needs Python 3 — it is what reads the manifests.
+
 ## Settings
 
 `GET` and `PUT` on `/api/v1/settings`. `PUT` takes the whole object back, so

@@ -4,6 +4,7 @@ pub mod batch;
 pub mod category;
 pub mod engine;
 pub mod manager;
+pub mod media;
 pub mod platform;
 pub mod plugins;
 pub mod probe;

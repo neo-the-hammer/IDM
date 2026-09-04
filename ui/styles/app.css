@@ -329,6 +329,13 @@ input[type='number'] {
   background: var(--accent);
 }
 
+/* A control that cannot be used has to look like one. */
+.switch input:disabled,
+.switch:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 /* Logical translate, so the knob slides the correct way in RTL. */
 .switch input:checked::after {
   translate: 14px 0;
@@ -862,4 +869,54 @@ details.advanced .content-inner {
   text-transform: uppercase;
   color: var(--accent);
   flex: none;
+}
+
+/* The stream picker reuses the grabber's list, with radio buttons because a
+   download has exactly one video track. */
+.grab-list input[type='radio'] {
+  accent-color: var(--accent);
+  flex: none;
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+.grab-list li.group-heading {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  background: var(--bg-inset);
+  padding-block: 4px;
+}
+
+.grab-list .stream-label {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.grab-list .stream-note {
+  font-size: 10px;
+  color: var(--text-dim);
+  flex: none;
+}
+
+.media-warnings {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.media-warnings li {
+  font-size: 12px;
+  color: var(--warning);
+  padding-block: 2px;
+}
+
+.media-warnings li::before {
+  content: '⚠ ';
 }

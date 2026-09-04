@@ -51,7 +51,7 @@ Architecture: $arch
 Maintainer: Hydra Download Manager contributors <noreply@example.invalid>
 Depends: libc6
 Recommends: libssl3 | libssl1.1, python3
-Suggests: yt-dlp
+Suggests: yt-dlp, ffmpeg
 Homepage: https://github.com/neo-the-hammer/IDM
 Description: Segmented download manager with queues and scheduling
  Hydra downloads files over many connections at once, resumes interrupted
@@ -61,8 +61,12 @@ Description: Segmented download manager with queues and scheduling
  already provides, loaded at run time, so the package works whether that is
  libssl3 or libssl1.1 and needs neither at build time.
  .
- python3 is recommended: it powers the site grabber and media extraction.
+ python3 is recommended: it powers the site grabber and the video grabber.
  Everything else works without it.
+ .
+ ffmpeg is optional. Streams are downloaded and assembled without it; what it
+ adds is combining a separate video and audio track into one file, and
+ converting MPEG-TS to MP4.
 CONTROL
 
 # Sizes are in kilobytes, and dpkg wants the installed size, not the archive's.

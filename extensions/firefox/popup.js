@@ -71,7 +71,7 @@ async function loadMedia() {
         button.disabled = true;
         const result = await ask({
           type: 'download',
-          request: { url: item.url, referer: tab.url },
+          request: { url: item.url, referer: tab.url, streaming: item.streaming === true },
         });
         button.textContent = result?.ok ? 'Sent' : 'Failed';
         if (!result?.ok) button.title = result?.error ?? '';

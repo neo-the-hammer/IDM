@@ -15,7 +15,7 @@ Hydra is built in milestones. Each one is independently useful and lands as its 
 | M8 | Python plugin host, site grabber, batch patterns | ✅ done |
 | M9 | Packaging (Windows/Linux/macOS), Tauri shell | ✅ done |
 | M10 | Documentation | ✅ done |
-| M11 | Media grabber — HLS/DASH, ffmpeg mux, yt-dlp bridge | 🔜 later |
+| M11 | Media grabber — HLS/DASH, AES-128, ffmpeg mux | ✅ done |
 
 ## Deliberately out of scope
 

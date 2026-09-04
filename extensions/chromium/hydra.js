@@ -139,7 +139,15 @@ export async function totals() {
  * links are only valid for the session that produced them, and without them
  * Hydra would fetch a login page instead of a file.
  */
-export async function sendDownload({ url, filename, referer, cookies, connections, queue }) {
+export async function sendDownload({
+  url,
+  filename,
+  referer,
+  cookies,
+  connections,
+  queue,
+  streaming,
+}) {
   const request = { url };
   if (filename) request.filename = filename;
   if (referer) request.referer = referer;
@@ -147,7 +155,10 @@ export async function sendDownload({ url, filename, referer, cookies, connection
   if (connections) request.connections = connections;
   if (queue) request.queue = queue;
   request.userAgent = navigator.userAgent;
-  return call('POST', '/downloads', request);
+  // An .m3u8 or .mpd is an index, not a video. Sending one to the plain
+  // download route saves a few kilobytes of text with a film's name on it,
+  // which is the whole reason the media route exists.
+  return call('POST', streaming ? '/media/download' : '/downloads', request);
 }
 
 /** Collects the cookies a request to `url` would have carried. */

@@ -39,6 +39,11 @@ Twelve themes ship in the box:
 | ![Tokyo Night](docs/screenshots/theme-tokyo-night.png) | ![Solarized Light](docs/screenshots/theme-solarized-light.png) | ![Rosé Pine](docs/screenshots/theme-rose-pine.png) |
 | Tokyo Night | Solarized Light | Rosé Pine |
 
+Streams get their own dialog: point it at an `.m3u8` or `.mpd`, see what
+qualities are actually on offer, and pick one.
+
+![The video grabber listing a DASH manifest's video and audio streams](docs/screenshots/video-grabber.png)
+
 And the whole interface flips for Persian — genuine right-to-left layout using
 CSS logical properties, with filenames held left-to-right so they stay readable
 and numbers localized:
@@ -55,6 +60,7 @@ and numbers localized:
 | 🎚️ **Speed limits** | Global, per-queue and per-download at once, all satisfied by nesting the buckets |
 | 🌐 **Browser capture** | MV3 extensions for Chrome, Edge, Brave and Firefox, forwarding the cookies, referer and user-agent that make session-protected links work |
 | 🕷️ **Site grabber** | Crawl a site with type and depth filters — honouring `robots.txt` — or expand `photo[001-250].jpg` in one go |
+| 🎬 **Video grabber** | HLS and DASH saved as one file: segments fetched in parallel, `AES-128` decrypted, and resumed segment by segment. ffmpeg is used when it is there and never required |
 | 🔍 **Integrity** | MD5, SHA-1 and SHA-256 verified *before* the file is renamed into place |
 | 🗂️ **Categories** | Documents, Music, Video, Programs, Compressed and Images, sorted automatically |
 | 🎨 **Twelve themes** | Plus custom accent colours, and your own themes in two small edits |
@@ -87,6 +93,8 @@ hdm get https://example.com/ubuntu.iso -n 16      # download now, no daemon
 hdm add https://example.com/big.zip --limit 2M    # queue it
 hdm batch 'https://example.com/photo[001-250].jpg' --add
 hdm grab https://example.com/docs/ --depth 2 --include pdf --add
+hdm media https://example.com/video/master.m3u8   # list the qualities on offer
+hdm media https://example.com/video/master.m3u8 --add --stream v0
 hdm list
 ```
 
@@ -109,8 +117,8 @@ to Hydra automatically.
  ┌─────────────────────────────┼──────────────────────────┐
  ▼                             ▼                          ▼
 hdm-core                   hdm-api                 python plugin host
-segments · resume        HTTP/1.1 + WS             links · media
-queues · scheduler        token auth               yt-dlp bridge
+segments · resume        HTTP/1.1 + WS           links · HLS · DASH
+queues · media            token auth               yt-dlp bridge
  │
  ▼
 hdm-net ── Transport ──┬── raw: TCP + TLS (OpenSSL)   [Linux, macOS]
@@ -118,7 +126,7 @@ hdm-net ── Transport ──┬── raw: TCP + TLS (OpenSSL)   [Linux, macO
 ```
 
 **Rust** does the network and the engine. **Python** is the extraction brain —
-optional, and everything except the site grabber and media extraction works
+optional, and everything except the site grabber and the video grabber works
 without it. **TypeScript** is the face.
 
 ### Zero dependencies, on purpose
@@ -173,7 +181,8 @@ option.
 جایگزینی مدرن و متن‌باز برای Internet Download Manager.
 
 دانلود چنداتصاله با تقسیم‌بندی پویا، ازسرگیری مطمئن دانلودهای نیمه‌کاره،
-صف و زمان‌بندی، یکپارچگی با مرورگر، و خزنده سایت.
+صف و زمان‌بندی، یکپارچگی با مرورگر، خزنده سایت، و گیرنده ویدیو برای
+جریان‌های HLS و DASH.
 
 رابط کاربری با **۱۲ پوسته آماده** و پشتیبانی کامل از **فارسی و چیدمان راست‌به‌چپ**
 — نه ترجمه‌ای نیم‌بند، بلکه چیدمانی که واقعاً برعکس می‌شود، با اعداد فارسی و

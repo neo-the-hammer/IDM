@@ -7,6 +7,7 @@ use crate::server::HttpRequest;
 use hdm_core::batch;
 use hdm_core::engine::{DownloadSpec, MAX_CONNECTIONS};
 use hdm_core::manager::Manager;
+use hdm_core::media::{self, MediaSelection};
 use hdm_core::platform;
 use hdm_core::plugins;
 use hdm_core::queue::Queue;
@@ -161,6 +162,11 @@ pub fn dispatch(manager: &Arc<Manager>, request: &HttpRequest, version: &str) ->
 
         ("POST", ["crawl"]) => run_crawl(request),
 
+        // ----------------------------------------------------- media grabber
+        ("POST", ["media", "probe"]) => probe_media(request),
+
+        ("POST", ["media", "download"]) => add_media(manager, request),
+
         ("POST", ["downloads-batch"]) => add_batch(manager, request),
 
         ("GET", ["plugins"]) => ok(plugins::status()),
@@ -179,18 +185,44 @@ fn add_download(manager: &Arc<Manager>, request: &HttpRequest) -> (u16, Json) {
         Ok(value) => value,
         Err(e) => return error(400, e),
     };
+    let spec = match spec_from_body(&body) {
+        Ok(spec) => spec,
+        Err(failure) => return failure,
+    };
 
+    let category = body
+        .get("category")
+        .and_then(Json::as_str)
+        .map(str::to_string);
+    let autostart = body.bool_or("autostart", true);
+    let id = manager.add(spec, category, autostart);
+
+    match manager.snapshot_one(&id) {
+        Some(value) => (201, value),
+        None => (201, json!({"id": (id.as_str())})),
+    }
+}
+
+/// Builds a download from a request body.
+///
+/// Shared by the plain and the media routes: a stream download takes every
+/// option a file download takes — directory, headers, proxy, credentials,
+/// speed limit — and differs only in carrying a selection alongside them.
+fn spec_from_body(body: &Json) -> Result<DownloadSpec, (u16, Json)> {
     let Some(url) = body.get("url").and_then(Json::as_str) else {
-        return error(400, "a `url` is required");
+        return Err(error(400, "a `url` is required"));
     };
     // Validate before storing, so a typo is reported now rather than surfacing
     // as a mysterious failure when the download eventually runs.
     let parsed = match hdm_net::url::Url::parse(url) {
         Ok(parsed) => parsed,
-        Err(e) => return error(400, format!("invalid URL: {e}")),
+        Err(e) => return Err(error(400, format!("invalid URL: {e}"))),
     };
     if !matches!(parsed.scheme.as_str(), "http" | "https" | "ftp" | "ftps") {
-        return error(400, format!("unsupported scheme `{}`", parsed.scheme));
+        return Err(error(
+            400,
+            format!("unsupported scheme `{}`", parsed.scheme),
+        ));
     }
 
     let directory = body
@@ -239,7 +271,12 @@ fn add_download(manager: &Arc<Manager>, request: &HttpRequest) -> (u16, Json) {
             .or_else(|| hdm_crypto::HashAlgo::from_hex_len(digest));
         match algo {
             Some(algo) => spec.checksum = Some((algo, digest.trim().to_ascii_lowercase())),
-            None => return error(400, "cannot tell which checksum algorithm that digest is"),
+            None => {
+                return Err(error(
+                    400,
+                    "cannot tell which checksum algorithm that digest is",
+                ))
+            }
         }
     }
 
@@ -270,6 +307,85 @@ fn add_download(manager: &Arc<Manager>, request: &HttpRequest) -> (u16, Json) {
     // every request this download makes.
     headers.retain(|(_, value)| hdm_net::headers::is_safe_header_value(value));
     spec.headers = headers;
+    Ok(spec)
+}
+
+/// Reads a streaming manifest and reports what it offers.
+///
+/// Separate from starting the download, for the same reason batch expansion is:
+/// a manifest usually offers half a dozen qualities, and choosing is the whole
+/// point.
+fn probe_media(request: &HttpRequest) -> (u16, Json) {
+    let body = match request.json() {
+        Ok(value) => value,
+        Err(e) => return error(400, e),
+    };
+    let spec = match spec_from_body(&body) {
+        Ok(spec) => spec,
+        Err(failure) => return failure,
+    };
+    match media::probe(&spec) {
+        Ok(probe) => ok(probe.to_json()),
+        Err(e) => error(400, e),
+    }
+}
+
+/// Adds a stream as a download.
+///
+/// With no stream named, the best video is taken — and its audio too when the
+/// manifest keeps them apart, which is what someone who just wants the video
+/// means.
+fn add_media(manager: &Arc<Manager>, request: &HttpRequest) -> (u16, Json) {
+    let body = match request.json() {
+        Ok(value) => value,
+        Err(e) => return error(400, e),
+    };
+    let mut spec = match spec_from_body(&body) {
+        Ok(spec) => spec,
+        Err(failure) => return failure,
+    };
+
+    let remux = body.bool_or("remux", false);
+    let selection = match body.get("streamId").and_then(Json::as_str) {
+        // An explicit choice is taken as given, with no second fetch of the
+        // manifest to second-guess it.
+        Some(stream) => {
+            let format = match body.get("format").and_then(Json::as_str) {
+                Some(format) => format.to_string(),
+                None => return error(400, "`format` is required alongside `streamId`"),
+            };
+            let mut selection = MediaSelection::new(format, spec.url.clone());
+            selection.stream_id = Some(stream.to_string());
+            selection.audio_url = body
+                .get("audioUrl")
+                .and_then(Json::as_str)
+                .map(str::to_string);
+            selection.audio_stream_id = body
+                .get("audioStreamId")
+                .and_then(Json::as_str)
+                .map(str::to_string);
+            selection.remux = remux;
+            selection
+        }
+        None => {
+            let probe = match media::probe(&spec) {
+                Ok(probe) => probe,
+                Err(e) => return error(400, e),
+            };
+            let Some(best) = probe.best() else {
+                return error(400, "that manifest offers nothing to download");
+            };
+            let mut selection = MediaSelection::new(probe.format.clone(), best.url.clone());
+            selection.stream_id = Some(best.id.clone());
+            if let Some(audio) = probe.best_audio() {
+                selection.audio_url = Some(audio.url.clone());
+                selection.audio_stream_id = Some(audio.id.clone());
+            }
+            selection.remux = remux;
+            selection
+        }
+    };
+    spec.media = Some(selection);
 
     let category = body
         .get("category")
