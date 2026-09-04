@@ -4,10 +4,13 @@
 //! so the UI and the CLI can render them without guessing.
 
 use crate::server::HttpRequest;
+use hdm_core::batch;
 use hdm_core::engine::{DownloadSpec, MAX_CONNECTIONS};
 use hdm_core::manager::Manager;
 use hdm_core::platform;
+use hdm_core::plugins;
 use hdm_core::queue::Queue;
+use hdm_core::spider::{self, CrawlOptions};
 use hdm_core::store::Settings;
 use hdm_json::{json, Json};
 use std::path::PathBuf;
@@ -153,6 +156,15 @@ pub fn dispatch(manager: &Arc<Manager>, request: &HttpRequest, version: &str) ->
             }
         }
 
+        // ------------------------------------------------ batch and grabber
+        ("POST", ["expand"]) => expand_pattern(request),
+
+        ("POST", ["crawl"]) => run_crawl(request),
+
+        ("POST", ["downloads-batch"]) => add_batch(manager, request),
+
+        ("GET", ["plugins"]) => ok(plugins::status()),
+
         ("GET", ["defaults"]) => ok(json!({
             "downloadDir": (platform::default_download_dir().to_string_lossy().into_owned()),
             "dataDir": (platform::data_dir().to_string_lossy().into_owned())
@@ -286,4 +298,113 @@ fn set_limit(manager: &Arc<Manager>, id: &str, request: &HttpRequest) -> Result<
         .and_then(Json::as_u64)
         .ok_or_else(|| "`bytesPerSecond` is required".to_string())?;
     manager.set_download_limit(id, rate)
+}
+
+/// Previews what a batch pattern stands for, without adding anything.
+///
+/// Separate from adding on purpose: a mistyped range can mean hundreds of
+/// downloads, and seeing the list first is the difference between a useful
+/// feature and a trap.
+fn expand_pattern(request: &HttpRequest) -> (u16, Json) {
+    let body = match request.json() {
+        Ok(value) => value,
+        Err(e) => return error(400, e),
+    };
+    let Some(pattern) = body.get("pattern").and_then(Json::as_str) else {
+        return error(400, "a `pattern` is required");
+    };
+    match batch::expand(pattern) {
+        Ok(urls) => ok(json!({
+            "count": (urls.len() as u64),
+            "urls": (Json::Arr(urls.into_iter().map(Json::Str).collect()))
+        })),
+        Err(e) => error(400, e.to_string()),
+    }
+}
+
+/// Walks a site and reports the files on it.
+fn run_crawl(request: &HttpRequest) -> (u16, Json) {
+    let body = match request.json() {
+        Ok(value) => value,
+        Err(e) => return error(400, e),
+    };
+    let Some(url) = body.get("url").and_then(Json::as_str) else {
+        return error(400, "a `url` is required");
+    };
+    let options = CrawlOptions::from_json(&body);
+    match spider::crawl(url, &options) {
+        Ok(result) => ok(result.to_json()),
+        Err(e) => error(400, e),
+    }
+}
+
+/// Adds a list of URLs in one call.
+fn add_batch(manager: &Arc<Manager>, request: &HttpRequest) -> (u16, Json) {
+    let body = match request.json() {
+        Ok(value) => value,
+        Err(e) => return error(400, e),
+    };
+    let Some(items) = body.get("urls").and_then(Json::as_arr) else {
+        return error(400, "a `urls` array is required");
+    };
+    if items.len() > batch::MAX_EXPANSION {
+        return error(
+            400,
+            format!("at most {} URLs at a time", batch::MAX_EXPANSION),
+        );
+    }
+
+    let directory = body
+        .get("directory")
+        .and_then(Json::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let connections = body.u64_or("connections", 0) as u8;
+    let referer = body.get("referer").and_then(Json::as_str);
+
+    let mut specs = Vec::with_capacity(items.len());
+    let mut rejected = Vec::new();
+    for item in items {
+        // Entries may be bare URLs or objects carrying the page they came
+        // from, which the site grabber supplies as a Referer.
+        let (url, item_referer) = match item {
+            Json::Str(url) => (url.as_str(), referer),
+            other => (
+                other.get("url").and_then(Json::as_str).unwrap_or(""),
+                other.get("foundOn").and_then(Json::as_str).or(referer),
+            ),
+        };
+        match hdm_net::url::Url::parse(url) {
+            Ok(parsed) if matches!(parsed.scheme.as_str(), "http" | "https" | "ftp" | "ftps") => {
+                let mut spec = DownloadSpec::new(url, directory.clone());
+                spec.connections = connections;
+                if let Some(referer) = item_referer {
+                    if hdm_net::headers::is_safe_header_value(referer) {
+                        spec.headers.push(("Referer".into(), referer.to_string()));
+                    }
+                }
+                specs.push(spec);
+            }
+            // One bad entry in a few hundred should not lose the rest; report
+            // which ones were skipped instead.
+            _ => rejected.push(Json::Str(url.to_string())),
+        }
+    }
+
+    let category = body
+        .get("category")
+        .and_then(Json::as_str)
+        .map(str::to_string);
+    let queue = body.get("queue").and_then(Json::as_str).map(str::to_string);
+    let autostart = body.bool_or("autostart", true);
+    let added = manager.add_many(specs, category, queue, autostart);
+
+    (
+        201,
+        json!({
+            "added": (added.len() as u64),
+            "ids": (Json::Arr(added.into_iter().map(Json::Str).collect())),
+            "rejected": (Json::Arr(rejected))
+        }),
+    )
 }

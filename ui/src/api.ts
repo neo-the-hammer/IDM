@@ -7,7 +7,15 @@
  * during development.
  */
 
-import type { Download, Queue, Settings, Snapshot, Totals } from './types.js';
+import type {
+  CrawlResult,
+  Download,
+  PluginStatus,
+  Queue,
+  Settings,
+  Snapshot,
+  Totals,
+} from './types.js';
 
 export class ApiError extends Error {
   constructor(
@@ -98,6 +106,22 @@ export class Api {
 
   setDownloadQueue(id: string, queue: string | null): Promise<Download> {
     return this.call('POST', `/downloads/${encodeURIComponent(id)}/queue`, { queue });
+  }
+
+  expandPattern(pattern: string): Promise<{ count: number; urls: string[] }> {
+    return this.call('POST', '/expand', { pattern });
+  }
+
+  crawl(request: Record<string, unknown>): Promise<CrawlResult> {
+    return this.call('POST', '/crawl', request);
+  }
+
+  addBatch(request: Record<string, unknown>): Promise<{ added: number; rejected: string[] }> {
+    return this.call('POST', '/downloads-batch', request);
+  }
+
+  plugins(): Promise<PluginStatus> {
+    return this.call('GET', '/plugins');
   }
 
   settings(): Promise<Settings> {

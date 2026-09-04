@@ -80,7 +80,21 @@ impl Manager {
     ///
     /// The save directory comes from the download's category unless the caller
     /// named one explicitly, which is what makes files sort themselves.
-    pub fn add(&self, mut spec: DownloadSpec, category: Option<String>, autostart: bool) -> String {
+    pub fn add(&self, spec: DownloadSpec, category: Option<String>, autostart: bool) -> String {
+        let id = self.add_without_saving(spec, category, autostart, None);
+        let state = self.state.lock().unwrap();
+        let _ = state.store.save();
+        id
+    }
+
+    /// Inserts a download without persisting, so a batch can save once.
+    fn add_without_saving(
+        &self,
+        mut spec: DownloadSpec,
+        category: Option<String>,
+        autostart: bool,
+        queue: Option<String>,
+    ) -> String {
         let mut state = self.state.lock().unwrap();
 
         if spec.connections == 0 {
@@ -94,8 +108,7 @@ impl Manager {
         }
 
         // The filename is not known until the server is asked, so route on the
-        // URL's last segment and let the engine refine it. Downloads whose
-        // final name lands in a different category are moved on completion.
+        // URL's last segment and let the engine refine it.
         let guess = hdm_net::url::Url::parse(&spec.url)
             .ok()
             .and_then(|u| u.filename())
@@ -115,14 +128,35 @@ impl Manager {
         // real name once Content-Disposition has been seen.
         record.filename = hdm_net::http::sanitize_filename(&guess);
         record.category = category;
+        record.queue = queue;
         record.status = if autostart {
             Status::Queued
         } else {
             Status::Paused
         };
-        let id = state.store.insert(record);
+        state.store.insert(record)
+    }
+
+    /// Adds many downloads at once, returning their ids.
+    ///
+    /// Used by batch patterns and the site grabber, where adding a few hundred
+    /// entries one API call at a time would be needlessly slow and would save
+    /// the state file once per download.
+    pub fn add_many(
+        &self,
+        specs: Vec<DownloadSpec>,
+        category: Option<String>,
+        queue: Option<String>,
+        autostart: bool,
+    ) -> Vec<String> {
+        let mut ids = Vec::with_capacity(specs.len());
+        for spec in specs {
+            let id = self.add_without_saving(spec, category.clone(), autostart, queue.clone());
+            ids.push(id);
+        }
+        let state = self.state.lock().unwrap();
         let _ = state.store.save();
-        id
+        ids
     }
 
     /// Marks a download runnable. The scheduler picks it up on the next tick.

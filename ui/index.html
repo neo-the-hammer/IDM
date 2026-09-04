@@ -27,6 +27,12 @@
           </svg>
           <span data-i18n="action.add">Add download</span>
         </button>
+        <button class="btn" id="grab-button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+          </svg>
+          <span data-i18n="grab.title">Batch / site grabber</span>
+        </button>
         <input
           type="text"
           class="search"
@@ -187,6 +193,72 @@
       <footer>
         <button type="button" class="btn" data-close data-i18n="action.close">Close</button>
         <button type="button" class="btn primary" id="settings-save" data-i18n="action.save">Save</button>
+      </footer>
+    </dialog>
+
+    <!-- Batch patterns and the site grabber -->
+    <dialog id="grab-dialog">
+      <header>
+        <h2 data-i18n="grab.title">Batch / site grabber</h2>
+        <button type="button" class="btn ghost icon" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="content">
+        <div class="tabs" role="tablist">
+          <button type="button" class="tab" id="tab-batch" role="tab" aria-selected="true"
+                  data-i18n="grab.batchTab">Batch pattern</button>
+          <button type="button" class="tab" id="tab-crawl" role="tab" aria-selected="false"
+                  data-i18n="grab.crawlTab">Site grabber</button>
+        </div>
+
+        <div id="panel-batch">
+          <div class="field">
+            <label for="batch-pattern" data-i18n="grab.pattern">Pattern</label>
+            <input type="text" id="batch-pattern"
+                   placeholder="https://example.com/photo[001-250].jpg" dir="ltr" />
+            <span class="hint" data-i18n="grab.patternHint">Use [1-100], [001-100] for padding, [a-z], or [1-100:2] to step.</span>
+          </div>
+        </div>
+
+        <div id="panel-crawl" hidden>
+          <div class="field">
+            <label for="crawl-url" data-i18n="grab.startUrl">Start from</label>
+            <input type="text" id="crawl-url" placeholder="https://example.com/downloads/" dir="ltr" />
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="crawl-depth" data-i18n="grab.depth">Links deep</label>
+              <input type="number" id="crawl-depth" min="0" max="8" value="1" />
+            </div>
+            <div class="field">
+              <label for="crawl-include" data-i18n="grab.include">Only these types</label>
+              <input type="text" id="crawl-include" placeholder="pdf, zip, mp4" dir="ltr" />
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="crawl-robots" checked />
+            <span data-i18n="grab.robots">Honour the site's robots.txt</span>
+          </label>
+        </div>
+
+        <div style="display: flex; gap: 8px; align-items: center">
+          <button type="button" class="btn primary" id="grab-preview" data-i18n="grab.preview">Find files</button>
+          <span id="grab-status" class="hint"></span>
+        </div>
+
+        <div id="grab-results" hidden>
+          <div style="display: flex; align-items: center; justify-content: space-between">
+            <h3 style="margin: 0; font-size: 13px" id="grab-count"></h3>
+            <div style="display: flex; gap: 6px">
+              <button type="button" class="btn ghost" id="grab-all" data-i18n="grab.selectAll">Select all</button>
+              <button type="button" class="btn ghost" id="grab-none" data-i18n="grab.selectNone">Select none</button>
+            </div>
+          </div>
+          <ul id="grab-list" class="grab-list"></ul>
+        </div>
+      </div>
+      <footer>
+        <button type="button" class="btn" data-close data-i18n="action.cancel">Cancel</button>
+        <button type="button" class="btn primary" id="grab-add" disabled data-i18n="grab.add">Add selected</button>
       </footer>
     </dialog>
 

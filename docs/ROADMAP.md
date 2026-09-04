@@ -12,7 +12,7 @@ Hydra is built in milestones. Each one is independently useful and lands as its 
 | M5 | Themed web UI (12 themes, en/fa, RTL) | ✅ done |
 | M6 | Queues, scheduler, post-download actions | ✅ done |
 | M7 | Browser extensions + native messaging host | ✅ done |
-| M8 | Python plugin host, site grabber, batch patterns | ⏳ |
+| M8 | Python plugin host, site grabber, batch patterns | ✅ done |
 | M9 | Packaging (Windows/Linux/macOS), Tauri shell | ⏳ |
 | M10 | Documentation | ⏳ |
 | M11 | Media grabber — HLS/DASH, ffmpeg mux, yt-dlp bridge | 🔜 later |

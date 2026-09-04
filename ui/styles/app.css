@@ -788,3 +788,78 @@ details.advanced .content-inner {
     display: none;
   }
 }
+
+/* ------------------------------------------------- batch and site grabber */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-block-end: 1px solid var(--border);
+  margin-block-end: 4px;
+}
+
+.tab {
+  padding: 7px 13px;
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--accent);
+  border-block-end-color: var(--accent);
+}
+
+.grab-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-block-size: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.grab-list li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  border-block-end: 1px solid var(--border);
+}
+
+.grab-list li:last-child {
+  border-block-end: 0;
+}
+
+.grab-list input[type='checkbox'] {
+  accent-color: var(--accent);
+  flex: none;
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+.grab-list .url {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  /* A URL is a neutral-direction string; forcing LTR keeps it readable in a
+     right-to-left interface. */
+  direction: ltr;
+  text-align: start;
+}
+
+.grab-list .ext {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  flex: none;
+}

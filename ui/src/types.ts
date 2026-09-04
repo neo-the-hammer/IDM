@@ -101,3 +101,32 @@ export interface Snapshot {
   downloads: Download[];
   totals: Totals;
 }
+
+/** A file the site grabber found. */
+export interface FoundFile {
+  url: string;
+  filename: string;
+  extension: string;
+  /** The page it was linked from, which becomes the download's Referer. */
+  foundOn: string;
+  text: string;
+}
+
+export interface CrawlResult {
+  files: FoundFile[];
+  pagesVisited: number;
+  errors: string[];
+  /** True when a limit stopped the crawl before it ran out of links. */
+  truncated: boolean;
+}
+
+export interface PluginStatus {
+  available: boolean;
+  error?: string;
+  python?: string;
+  packageRoot?: string;
+  capabilities?: {
+    version: string;
+    ytdlp: { available: boolean; version?: string; reason?: string };
+  };
+}

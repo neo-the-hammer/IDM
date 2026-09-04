@@ -5,7 +5,7 @@ import { bytes, duration, parseRate, percent, rate, timestamp } from './format.j
 import { applyStaticStrings, locale, setLocale, t, type Locale } from './i18n.js';
 import { invalidateRows, renderList, type RowAction } from './render.js';
 import { ACCENTS, applyAccent, applyTheme, currentAccent, currentTheme, restoreAppearance, THEMES } from './theme.js';
-import type { Download, Queue, Settings, Snapshot, Totals } from './types.js';
+import type { Download, FoundFile, Queue, Settings, Snapshot, Totals } from './types.js';
 
 type Filter = 'all' | 'downloading' | 'queued' | 'paused' | 'completed' | 'failed';
 
@@ -402,6 +402,8 @@ function wireChrome(): void {
   });
 
   $('add-button').addEventListener('click', () => openAddDialog());
+  $('grab-button').addEventListener('click', () => openGrabDialog());
+  wireGrabDialog();
   $('settings-button').addEventListener('click', () => openSettingsDialog());
   $('pause-all').addEventListener('click', () => api.pauseAll().catch(reportError));
   $('resume-all').addEventListener('click', () => api.resumeAll().catch(reportError));
@@ -553,6 +555,184 @@ function saveSettings(): void {
       toast(t('settings.saved'));
     })
     .catch(reportError);
+}
+
+// ------------------------------------------------- batch and site grabber
+
+/** What the last search turned up, and which of it is selected. */
+let grabCandidates: FoundFile[] = [];
+
+function openGrabDialog(): void {
+  $('grab-results').hidden = true;
+  $<HTMLButtonElement>('grab-add').disabled = true;
+  $('grab-status').textContent = '';
+  grabCandidates = [];
+  $<HTMLDialogElement>('grab-dialog').showModal();
+  $<HTMLInputElement>('batch-pattern').focus();
+}
+
+function wireGrabDialog(): void {
+  const selectTab = (batch: boolean) => {
+    $('tab-batch').setAttribute('aria-selected', String(batch));
+    $('tab-crawl').setAttribute('aria-selected', String(!batch));
+    $('panel-batch').hidden = !batch;
+    $('panel-crawl').hidden = batch;
+    // The two modes find different things; keeping stale results would invite
+    // adding the wrong list.
+    $('grab-results').hidden = true;
+    $<HTMLButtonElement>('grab-add').disabled = true;
+    $('grab-status').textContent = '';
+  };
+  $('tab-batch').addEventListener('click', () => selectTab(true));
+  $('tab-crawl').addEventListener('click', () => selectTab(false));
+
+  $('grab-preview').addEventListener('click', runGrabSearch);
+  $('grab-all').addEventListener('click', () => setAllSelected(true));
+  $('grab-none').addEventListener('click', () => setAllSelected(false));
+  $('grab-add').addEventListener('click', addSelected);
+
+  // Enter in either input runs the search, which is what a user expects.
+  for (const id of ['batch-pattern', 'crawl-url']) {
+    $(id).addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Enter') {
+        event.preventDefault();
+        runGrabSearch();
+      }
+    });
+  }
+}
+
+function batchMode(): boolean {
+  return $('tab-batch').getAttribute('aria-selected') === 'true';
+}
+
+async function runGrabSearch(): Promise<void> {
+  const button = $<HTMLButtonElement>('grab-preview');
+  const status = $('grab-status');
+  button.disabled = true;
+  status.textContent = t('grab.searching');
+  $('grab-results').hidden = true;
+
+  try {
+    if (batchMode()) {
+      const pattern = $<HTMLInputElement>('batch-pattern').value.trim();
+      if (!pattern) return;
+      const { urls } = await api.expandPattern(pattern);
+      grabCandidates = urls.map((url) => ({
+        url,
+        filename: url.split('/').pop() ?? url,
+        extension: (url.split('.').pop() ?? '').toLowerCase(),
+        foundOn: '',
+        text: '',
+      }));
+      status.textContent = t('grab.found', { n: grabCandidates.length });
+    } else {
+      const url = $<HTMLInputElement>('crawl-url').value.trim();
+      if (!url) return;
+      const include = $<HTMLInputElement>('crawl-include')
+        .value.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const result = await api.crawl({
+        url,
+        depth: Number($<HTMLInputElement>('crawl-depth').value) || 0,
+        include,
+        respectRobots: $<HTMLInputElement>('crawl-robots').checked,
+      });
+      grabCandidates = result.files;
+      status.textContent =
+        t('grab.foundPages', { n: result.files.length, pages: result.pagesVisited }) +
+        (result.truncated ? ` (${t('grab.truncated')})` : '');
+    }
+    renderGrabResults();
+  } catch (error) {
+    grabCandidates = [];
+    status.textContent = '';
+    reportError(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderGrabResults(): void {
+  const list = $('grab-list');
+  if (grabCandidates.length === 0) {
+    $('grab-results').hidden = false;
+    $('grab-count').textContent = t('grab.nothing');
+    list.replaceChildren();
+    $<HTMLButtonElement>('grab-add').disabled = true;
+    return;
+  }
+
+  list.replaceChildren(
+    ...grabCandidates.map((file, index) => {
+      const row = document.createElement('li');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      box.dataset.index = String(index);
+      box.addEventListener('change', updateAddButton);
+
+      const url = document.createElement('span');
+      url.className = 'url';
+      url.textContent = file.url;
+      url.title = file.foundOn ? `${file.url}\n\nfound on ${file.foundOn}` : file.url;
+
+      const ext = document.createElement('span');
+      ext.className = 'ext';
+      ext.textContent = file.extension;
+
+      row.append(box, url, ext);
+      return row;
+    }),
+  );
+  $('grab-results').hidden = false;
+  $('grab-count').textContent = t('grab.found', { n: grabCandidates.length });
+  updateAddButton();
+}
+
+function selectedIndices(): number[] {
+  return [...$('grab-list').querySelectorAll<HTMLInputElement>('input:checked')].map((box) =>
+    Number(box.dataset.index),
+  );
+}
+
+function setAllSelected(checked: boolean): void {
+  $('grab-list')
+    .querySelectorAll<HTMLInputElement>('input[type=checkbox]')
+    .forEach((box) => (box.checked = checked));
+  updateAddButton();
+}
+
+function updateAddButton(): void {
+  const count = selectedIndices().length;
+  const button = $<HTMLButtonElement>('grab-add');
+  button.disabled = count === 0;
+  button.textContent = count > 0 ? `${t('grab.add')} (${count})` : t('grab.add');
+}
+
+async function addSelected(): Promise<void> {
+  const chosen = selectedIndices()
+    .map((index) => grabCandidates[index])
+    .filter((file): file is FoundFile => file !== undefined);
+  if (chosen.length === 0) return;
+
+  const button = $<HTMLButtonElement>('grab-add');
+  button.disabled = true;
+  try {
+    // Each entry carries the page it was found on, which becomes its Referer --
+    // many servers refuse a download without one.
+    const { added } = await api.addBatch({
+      urls: chosen.map((file) => ({ url: file.url, foundOn: file.foundOn || undefined })),
+      autostart: true,
+    });
+    $<HTMLDialogElement>('grab-dialog').close();
+    toast(t('grab.added', { n: added }));
+  } catch (error) {
+    reportError(error);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // ------------------------------------------------------------- appearance

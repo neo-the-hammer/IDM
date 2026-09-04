@@ -80,6 +80,18 @@ export class Api {
     setDownloadQueue(id, queue) {
         return this.call('POST', `/downloads/${encodeURIComponent(id)}/queue`, { queue });
     }
+    expandPattern(pattern) {
+        return this.call('POST', '/expand', { pattern });
+    }
+    crawl(request) {
+        return this.call('POST', '/crawl', request);
+    }
+    addBatch(request) {
+        return this.call('POST', '/downloads-batch', request);
+    }
+    plugins() {
+        return this.call('GET', '/plugins');
+    }
     settings() {
         return this.call('GET', '/settings');
     }

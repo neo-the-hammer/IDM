@@ -37,6 +37,9 @@ fn main() {
         Some("cancel") => command_action(&args[1..], "cancel"),
         Some("restart") => command_action(&args[1..], "restart"),
         Some("remove") | Some("rm") => command_remove(&args[1..]),
+        Some("batch") => command_batch(&args[1..]),
+        Some("grab") => command_grab(&args[1..]),
+        Some("plugins") => command_plugins(),
         Some("settings") => command_settings(&args[1..]),
         Some("status") => command_status(),
         Some(other) => Err(format!("unknown command `{other}`. Try `hdm --help`.")),
@@ -292,6 +295,185 @@ fn command_remove(args: &[String]) -> Result<(), String> {
     daemon.request("DELETE", &format!("/api/v1/downloads/{id}{query}"), None)?;
     println!("{id}: removed");
     Ok(())
+}
+
+/// Expands a batch pattern, and optionally queues every URL it names.
+fn command_batch(args: &[String]) -> Result<(), String> {
+    let pattern = args
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .ok_or("`hdm batch` needs a pattern, e.g. 'http://host/f[1-20].zip'")?;
+    let add = args.iter().any(|a| a == "--add");
+
+    let urls = hdm_core::batch::expand(pattern).map_err(|e| e.to_string())?;
+
+    if !add {
+        // Print and stop. A mistyped range can mean hundreds of downloads, so
+        // showing the list is the default and adding is the explicit step.
+        for url in &urls {
+            println!("{url}");
+        }
+        eprintln!("\n{} URLs. Re-run with --add to queue them.", urls.len());
+        return Ok(());
+    }
+
+    let daemon = Daemon::connect()?;
+    let mut body = json!({
+        "urls": (Json::Arr(urls.iter().map(|u| Json::Str(u.clone())).collect()))
+    });
+    if let Some(directory) = value_after(args, &["-d", "--dir"]) {
+        body.insert("directory", Json::Str(directory));
+    }
+    if let Some(queue) = value_after(args, &["--queue"]) {
+        body.insert("queue", Json::Str(queue));
+    }
+    if let Some(connections) = value_after(args, &["-n", "--connections"]) {
+        body.insert(
+            "connections",
+            Json::from(connections.parse::<u64>().unwrap_or(0)),
+        );
+    }
+    body.insert(
+        "autostart",
+        Json::Bool(!args.iter().any(|a| a == "--paused")),
+    );
+
+    let response = daemon.request("POST", "/api/v1/downloads-batch", Some(body))?;
+    println!("Added {} downloads.", response.u64_or("added", 0));
+    let rejected = response
+        .get("rejected")
+        .and_then(Json::as_arr)
+        .unwrap_or(&[]);
+    if !rejected.is_empty() {
+        eprintln!("Skipped {} unusable URLs.", rejected.len());
+    }
+    Ok(())
+}
+
+/// Crawls a site and lists the files on it, optionally queueing them.
+fn command_grab(args: &[String]) -> Result<(), String> {
+    let url = args
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .ok_or("`hdm grab` needs a URL to start from")?;
+    let add = args.iter().any(|a| a == "--add");
+    let daemon = Daemon::connect()?;
+
+    let mut body = json!({"url": (url.as_str())});
+    if let Some(depth) = value_after(args, &["--depth"]) {
+        body.insert("depth", Json::from(depth.parse::<u64>().unwrap_or(1)));
+    }
+    if let Some(include) = value_after(args, &["--include"]) {
+        body.insert(
+            "include",
+            Json::Arr(
+                include
+                    .split(',')
+                    .map(|e| Json::Str(e.trim().to_string()))
+                    .collect(),
+            ),
+        );
+    }
+    if let Some(exclude) = value_after(args, &["--exclude"]) {
+        body.insert(
+            "exclude",
+            Json::Arr(
+                exclude
+                    .split(',')
+                    .map(|e| Json::Str(e.trim().to_string()))
+                    .collect(),
+            ),
+        );
+    }
+    if args.iter().any(|a| a == "--any-host") {
+        body.insert("sameHost", Json::Bool(false));
+    }
+    if args.iter().any(|a| a == "--local-files-only") {
+        body.insert("filesSameHost", Json::Bool(true));
+    }
+    if args.iter().any(|a| a == "--anywhere") {
+        body.insert("stayUnderPath", Json::Bool(false));
+    }
+    if args.iter().any(|a| a == "--ignore-robots") {
+        body.insert("respectRobots", Json::Bool(false));
+    }
+
+    eprintln!("Crawling {url}...");
+    let result = daemon.request("POST", "/api/v1/crawl", Some(body))?;
+    let files = result.get("files").and_then(Json::as_arr).unwrap_or(&[]);
+
+    for file in files {
+        println!("{}", file.str_or("url", ""));
+    }
+    eprintln!(
+        "\n{} files across {} pages{}",
+        files.len(),
+        result.u64_or("pagesVisited", 0),
+        if result.bool_or("truncated", false) {
+            " (stopped at a limit)"
+        } else {
+            ""
+        }
+    );
+    for problem in result.get("errors").and_then(Json::as_arr).unwrap_or(&[]) {
+        eprintln!("  ! {}", problem.as_str().unwrap_or(""));
+    }
+
+    if !add {
+        eprintln!("Re-run with --add to queue them.");
+        return Ok(());
+    }
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut add_body = json!({"urls": (Json::Arr(files.to_vec()))});
+    if let Some(directory) = value_after(args, &["-d", "--dir"]) {
+        add_body.insert("directory", Json::Str(directory));
+    }
+    if let Some(queue) = value_after(args, &["--queue"]) {
+        add_body.insert("queue", Json::Str(queue));
+    }
+    let response = daemon.request("POST", "/api/v1/downloads-batch", Some(add_body))?;
+    println!("Added {} downloads.", response.u64_or("added", 0));
+    Ok(())
+}
+
+/// Reports whether the Python extraction plugins are usable.
+fn command_plugins() -> Result<(), String> {
+    let status = hdm_core::plugins::status();
+    if !status.bool_or("available", false) {
+        println!("Extraction plugins: unavailable");
+        println!("  {}", status.str_or("error", "unknown reason"));
+        println!("\nThe site grabber and media extraction need Python 3.");
+        println!("Everything else, including batch patterns, works without it.");
+        return Ok(());
+    }
+
+    println!("Extraction plugins: ready");
+    println!("  python  {}", status.str_or("python", "?"));
+    println!("  package {}", status.str_or("packageRoot", "?"));
+    if let Some(capabilities) = status.get("capabilities") {
+        println!("  version {}", capabilities.str_or("version", "?"));
+        if let Some(ytdlp) = capabilities.get("ytdlp") {
+            if ytdlp.bool_or("available", false) {
+                println!(
+                    "  yt-dlp  {} ({})",
+                    ytdlp.str_or("version", "?"),
+                    ytdlp.str_or("how", "?")
+                );
+            } else {
+                println!("  yt-dlp  not installed -- {}", ytdlp.str_or("reason", ""));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The value following any of `flags`, for the simple options above.
+fn value_after(args: &[String], flags: &[&str]) -> Option<String> {
+    let index = args.iter().position(|a| flags.contains(&a.as_str()))?;
+    args.get(index + 1).filter(|v| !v.starts_with('-')).cloned()
 }
 
 fn command_settings(args: &[String]) -> Result<(), String> {
@@ -582,6 +764,9 @@ USAGE:
 COMMANDS:
     get <URL>          Download a file now, without a daemon
     add <URL>          Queue a download in the running daemon
+    batch <PATTERN>    Expand a pattern like 'host/f[1-20].zip' (--add to queue)
+    grab <URL>         Crawl a site and list its files (--add to queue)
+    plugins            Report whether the Python extraction plugins are usable
     list               Show the download list
     status             Show daemon and transfer totals
     pause <ID>         Pause a download (or --all)
@@ -606,8 +791,21 @@ DOWNLOAD OPTIONS:
         --paused              Add without starting (add only)
         --overwrite           Replace an existing file
 
+BATCH AND SITE GRABBER OPTIONS:
+        --add                 Queue the results instead of only listing them
+        --depth <N>           How many links deep to crawl (grab)
+        --include <EXTS>      Only these extensions, comma separated (grab)
+        --exclude <EXTS>      Never these extensions (grab)
+        --any-host            Follow links off the starting host (grab)
+        --local-files-only    Skip files served by another host, such as a CDN
+        --anywhere            Allow rising above the starting folder (grab)
+        --ignore-robots       Do not honour robots.txt (grab)
+        --queue <NAME>        Put the results in this queue
+
 EXAMPLES:
     hdm get https://example.com/ubuntu.iso -n 16
+    hdm batch 'https://example.com/photo[001-250].jpg' --add
+    hdm grab https://example.com/docs/ --depth 2 --include pdf,zip --add
     hdm add https://example.com/f.zip --limit 2M
     hdm settings --speed-limit 500k
     hdm pause --all"
