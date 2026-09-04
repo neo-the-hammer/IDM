@@ -80,11 +80,19 @@ await page.waitForTimeout(1500);
 
 check('the event stream connects', (await page.textContent('#connection-label')) === 'Connected');
 const rows = await page.locator('.download').count();
-if (rows > 0) {
-  const before = await page.locator('.download .meta').first().textContent();
+// Watch a row that is actually transferring. Taking the first row regardless
+// means a list whose first entry has already finished reports a stall that is
+// not happening -- a check that cries wolf is worse than no check.
+const moving = page.locator('.download:has(.status-pill.downloading)').first();
+if (await moving.count()) {
+  const before = await moving.locator('.meta').textContent();
   await page.waitForTimeout(2500);
-  const after = await page.locator('.download .meta').first().textContent();
-  check('live progress updates arrive', before !== after);
+  const after = await moving.locator('.meta').textContent();
+  check('live progress updates arrive', before !== after, `"${before}" -> "${after}"`);
+} else if (rows > 0) {
+  console.log('info  nothing is downloading, so live progress was not checked');
+}
+if (rows > 0) {
   const strips = await page.locator('.segments').count();
   console.log(`info  ${rows} rows, ${strips} showing per-connection segments`);
 }

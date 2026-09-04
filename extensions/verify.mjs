@@ -43,6 +43,11 @@ const flag = (name, fallback) => {
 
 const EXT = path.resolve(path.dirname(new URL(import.meta.url).pathname), 'chromium');
 const TARGET = flag('url', 'http://127.0.0.1:38090/report.pdf');
+// The manifest used to prove a stream reaches the media grabber. Resolved
+// against the target's origin, so pointing --url at another test site is
+// enough; --manifest overrides it, and an unreachable one skips those checks
+// rather than reporting failures that are about the fixtures, not the code.
+const MANIFEST = flag('manifest', 'hi.m3u8');
 const DATA_DIR =
   flag('data-dir', process.env.HYDRA_DATA_DIR) ??
   path.join(os.homedir(), '.local/share/hydra');
@@ -158,20 +163,26 @@ if (captured) {
 
 // A streaming manifest must reach the media grabber rather than the plain
 // download route, or the "video" that arrives is a few kilobytes of text.
-const STREAM = new URL('hi.m3u8', origin).href;
+const STREAM = new URL(MANIFEST, origin).href;
 const beforeStream = await listDownloads();
 
 // Load the playlist the way a player would, so the extension sniffs it from
 // the response's content type rather than from the address bar.
-await page.evaluate((url) => fetch(url).then((r) => r.text()), STREAM);
+const reachable = await page.evaluate(
+  (url) => fetch(url).then((r) => r.ok).catch(() => false),
+  STREAM,
+);
 await page.waitForTimeout(600);
 
-// These have to be sent from an extension *page*: a runtime message sent from
-// the service worker is not delivered to the service worker's own listener.
-const media = await context.newPage();
-await media.goto(`chrome-extension://${extensionId}/options.html`);
+if (!reachable) {
+  console.log(`info  ${STREAM} is not being served, so the media checks were skipped`);
+} else {
+  // These have to be sent from an extension *page*: a runtime message sent from
+  // the service worker is not delivered to the service worker's own listener.
+  const media = await context.newPage();
+  await media.goto(`chrome-extension://${extensionId}/options.html`);
 
-const sniffed = await media.evaluate(
+  const sniffed = await media.evaluate(
   (pageOrigin) =>
     new Promise((resolve) => {
       chrome.tabs.query({ url: `${pageOrigin}/*` }, ([tab]) => {
@@ -181,40 +192,41 @@ const sniffed = await media.evaluate(
       });
     }),
   origin,
-);
-const playlist = sniffed.find((item) => item.url === STREAM);
-check('the playlist is noticed as a stream', playlist?.streaming === true, JSON.stringify(sniffed));
+  );
+  const playlist = sniffed.find((item) => item.url === STREAM);
+  check('the playlist is noticed as a stream', playlist?.streaming === true, JSON.stringify(sniffed));
 
-// This is what the popup's "Get" button sends.
-const sent = await media.evaluate(
+  // This is what the popup's "Get" button sends.
+  const sent = await media.evaluate(
   (url) =>
     new Promise((resolve) => {
       chrome.runtime.sendMessage({ type: 'download', request: { url, streaming: true } }, resolve);
     }),
   STREAM,
-);
-check('the stream is accepted', sent?.ok === true, sent?.error ?? '');
-await media.close();
+  );
+  check('the stream is accepted', sent?.ok === true, sent?.error ?? '');
+  await media.close();
 
-let afterStream = beforeStream;
-for (let i = 0; i < 40; i += 1) {
+  let afterStream = beforeStream;
+  for (let i = 0; i < 40; i += 1) {
   await page.waitForTimeout(500);
   afterStream = await listDownloads();
   if (afterStream.downloads.length > beforeStream.downloads.length) break;
-}
-const stream = afterStream.downloads.find(
+  }
+  const stream = afterStream.downloads.find(
   (d) => !beforeStream.downloads.some((b) => b.id === d.id),
-);
-check(
+  );
+  check(
   'the stream goes to the media grabber, not the file route',
   Boolean(stream?.spec?.media),
   stream ? JSON.stringify(stream.spec.media ?? null) : 'nothing was added',
-);
-if (stream) {
-  await fetch(`${daemon.url}/api/v1/downloads/${stream.id}?deleteFiles=true`, {
-    method: 'DELETE',
-    headers: authorized,
-  });
+  );
+  if (stream) {
+    await fetch(`${daemon.url}/api/v1/downloads/${stream.id}?deleteFiles=true`, {
+      method: 'DELETE',
+      headers: authorized,
+    });
+  }
 }
 
 const leftBehind = await worker.evaluate(
