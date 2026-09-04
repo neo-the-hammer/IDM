@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  Tauri expects a frontend directory. Hydra's interface is served by the daemon
+  over loopback rather than bundled, so there is exactly one copy of it and no
+  chance of the bundled and served versions drifting apart.
+
+  This page only appears if the shell somehow fails to open the real one.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hydra</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; background: #0f1115; color: #e6e9ef;
+             display: grid; place-items: center; height: 100vh; margin: 0; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <h1>Hydra</h1>
+      <p>The interface is served by the daemon. If you are seeing this, it did not start.</p>
+      <p>Run <code>hdmd</code> in a terminal to see why.</p>
+    </div>
+  </body>
+</html>

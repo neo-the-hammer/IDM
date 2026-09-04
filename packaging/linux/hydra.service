@@ -1,0 +1,45 @@
+# A systemd *user* unit: Hydra runs as you, not as root.
+#
+# A download manager needs exactly the permissions of the person using it --
+# writing to their Downloads folder and nothing more. Running it system-wide
+# would give it far more reach than the job requires.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp hydra.service ~/.config/systemd/user/
+#   systemctl --user enable --now hydra
+#
+# Keep it running when you are logged out:
+#   loginctl enable-linger $USER
+
+[Unit]
+Description=Hydra Download Manager
+Documentation=https://github.com/neo-the-hammer/IDM
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/hdmd
+Restart=on-failure
+RestartSec=5
+
+# Hydra writes downloads and its own state, and nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-write
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# It listens on loopback and fetches over the network; nothing else is needed.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=default.target

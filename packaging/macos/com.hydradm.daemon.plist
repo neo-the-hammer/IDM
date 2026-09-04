@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A LaunchAgent, not a LaunchDaemon. Hydra needs exactly the permissions of the
+  person using it, and running it system-wide would give it far more reach than
+  downloading files requires.
+
+  Adjust the path below if you did not install to /Applications.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydradm.daemon</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/Hydra.app/Contents/MacOS/hdmd</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <!-- Restart if it crashes, but not if it was stopped deliberately. -->
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/hydra.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/hydra.log</string>
+</dict>
+</plist>

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Opens Hydra's interface, starting the daemon first if it is not running.
+#
+# The desktop entry points here rather than at hdmd so that clicking the icon
+# does the obvious thing whether or not the service is already up.
+set -eu
+
+data_dir="${HYDRA_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/hydra}"
+daemon_file="$data_dir/daemon.json"
+
+read_url() {
+  [ -f "$daemon_file" ] || return 1
+  python3 - "$daemon_file" 2>/dev/null <<'PY' || return 1
+import json, sys
+print(json.load(open(sys.argv[1]))["url"])
+PY
+}
+
+url=$(read_url || true)
+
+if [ -z "${url:-}" ]; then
+  # Prefer the service, so the daemon is supervised rather than orphaned.
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user list-unit-files hydra.service >/dev/null 2>&1; then
+    systemctl --user start hydra.service || true
+  else
+    (hdmd >/dev/null 2>&1 &)
+  fi
+  # Give it a moment to publish its port.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    url=$(read_url || true)
+    [ -n "${url:-}" ] && break
+    sleep 0.3
+  done
+fi
+
+if [ -z "${url:-}" ]; then
+  echo "Hydra did not start. Run 'hdmd' in a terminal to see why." >&2
+  exit 1
+fi
+
+exec xdg-open "$url"

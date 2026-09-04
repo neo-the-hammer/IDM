@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Hydra Download Manager
+GenericName=Download Manager
+Comment=Segmented, resumable downloads with queues and scheduling
+Exec=hydra-open
+Icon=hydra
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=download;downloader;manager;accelerator;
+StartupNotify=true
+# Handles download links handed over by a browser or file manager.
+MimeType=x-scheme-handler/hydra;

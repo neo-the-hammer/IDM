@@ -1,0 +1,14 @@
+{
+  "name": "hydra-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A native window around the Hydra Download Manager interface",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

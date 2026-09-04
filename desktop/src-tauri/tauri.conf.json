@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hydra",
+  "version": "0.1.0",
+  "identifier": "org.hydradm.desktop",
+  "build": {
+    "frontendDist": "../placeholder"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null,
+      "capabilities": []
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"],
+    "category": "Utility",
+    "shortDescription": "Segmented download manager",
+    "longDescription": "Hydra downloads files over many connections at once, resumes interrupted transfers, and organises them into queues that can run on a schedule.",
+    "resources": [],
+    "externalBin": []
+  }
+}
